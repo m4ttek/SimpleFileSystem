@@ -12,7 +12,7 @@
 /**
  * Tworzy system plików pod zadaną ścieżkę
  * @param path - ścieżka do tworzonego systemu plików
- * @param block_size - rozmar bloku w bajtach
+ * @param ::block_size - rozmar bloku w bajtach
  * @param number_of_blocks - liczba bloków
  *
  * @return {0} sukces, {-1} błąd
