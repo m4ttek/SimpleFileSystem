@@ -25,7 +25,7 @@ int simplefs_init(char *path, int block_size, int number_of_blocks);
  *
  * @return {deskryptor} sukces, {-1} błąd
  */
-int simpelfs_openfs(char *path);
+int simplefs_openfs(char *path);
 
 
 /**
@@ -34,7 +34,7 @@ int simpelfs_openfs(char *path);
  *
  * @return {0} sukces, {-1} błąd
  */
-int simpelfs_closefs(int fsfd);
+int simplefs_closefs(int fsfd);
 
 /**
  * Otwiera plik o podanej nazzwie w danym trybie, w systemie z danego deskryptora
@@ -48,7 +48,7 @@ int simplefs_open(char *name, int mode, int fsfd);
 //Tryby
 #define READ_MODE 0x04
 #define WRITE_MODE 0x02
-#define READ_AND_WRITE 0x6
+#define READ_AND_WRITE 0x06
 //Błędy
 #define FILE_DOESNT_EXIST -1
 #define WRONG_MODE -2

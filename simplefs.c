@@ -12,6 +12,6 @@ int simplefs_closefs(int fsfd) {
     return -1;
 }
 
-int simplefs_open(char *name, int mdoe, int fsfd) {
+int simplefs_open(char *name, int mode, int fsfd) {
     return -1;
 }
