@@ -40,7 +40,8 @@ int simplefs_closefs(int fsfd);
  * Otwiera plik o podanej nazzwie w danym trybie, w systemie z danego deskryptora
  * @param name - nazwa pliku
  * @param mode - tryb {patrz niżej}
- * @param fsfd - deskryptor
+ * @param fsfd - deskryptor do systemu plików
+ *
  * @return {deskryptor} sukces, {-1, -2} bład (patrz niżej)
  */
 int simplefs_open(char *name, int mode, int fsfd);
@@ -53,6 +54,95 @@ int simplefs_open(char *name, int mode, int fsfd);
 #define FILE_DOESNT_EXIST -1
 #define WRONG_MODE -2
 
+/**
+ * Usuwa plik o podanej nazwie w systemie plików, w systemie z danego deskryptor
+ * @param name - nazwa pliku
+ * @param fsfd - deskryptor do systemu plików
+ *
+ * @return {0} sukces, {-1} brak pliku
+ */
+int simplefs_unlink(char *name, int fsfd);
+
+//Zwracane
+#define OK 0
+#define FILE_DOESNT_EXIST -1
+
+/**
+ * Tworzy katalog o pełnej ścieżce, gdzie kolejne katalogi są oddzielone znakiem ‘/’,  różne od ‘.’ oraz ‘..’
+ * @param name - nazwa katalogu
+ * @param fsfd - deskryptor do systemu plików
+ *
+ * @return {0} sukces, {-1, -2} błąd (patrz niżej)
+ */
+int simplefs_mkdir (char *name, int fsfd);
+
+#define OK 0
+#define PARENT_DIR_DOESNT_EXIST -1
+#define NAME_ALREADY_IN_USE -2
+
+/**
+ * Tworzy plik o podanej nazwie (razem ze ścieżką oraz trybie praw, zapis/odczyt)
+ * @param name - nazwa pliku wraz ze ścieżką
+ * @param mode - tryb
+ * @param fsfd - deskryptor do systemu plików
+ *
+ * @return {0} sukces, {-1, -2, -3, -4, -5} błąd (patrz niżej)
+ */
+
+int simplefs_creat (char *name, int mode, int fsfd);
+
+//Zwracane
+#define OK 0 
+#define FILE_ALREADY_EXISTS -1 
+#define WRONG_MODE -2 
+#define DIR_DOESNT_EXIST -3 
+#define NAME_TOO_LONG -4
+#define NO_FREE_BLOCKS -5
+
+/**
+ * 	Czyta plik do podanego bufora o podanej długości.
+ * @param fd - deskryptor do pliku
+ * @param buf - bufor, do którego zostanie wczytana zawartość pliku
+ * @param len - rozmiar bufora
+ * @param fsfd - deskryptor do systemu plików
+ *
+ * @return {wczytana wilkosc} jesli wczytana wielkosc < len => koniec pliku, 
+ */
+int simplefs_read(int fd, char *buf, int len, int fsfd);
+
+/**
+ * Zapisuje z zawartość bufora o podanej długości do pliku określonego przez deskryptor
+ * @param fd - deskryptor do pliku
+ * @param buf - bufor, z którego będzie zapisywana informacja
+ * @param len - rozmiar bufora
+ * @param fsfd - deskryptor do systemu plików
+ *
+ * @return {0} sukces, {-1} bład (patrz niżej)
+ */
+int simplefs_write(int fd, char *buf, int len, int fsfd);
+
+//Zwracane
+#define OK 0 
+#define CANNOT_EXTEND_FILE -1 
+
+/**
+ * Przesuwa pozycję o podany offset w pliku, pod warunkami określonymi przez whence
+ * @param fd - deskryptor pliku
+ * @param whene - jedna z trzech wartości (patrz niżej)
+ * @param offset - liczba bajtów, o które chcamy się przesunąć
+ * @param fsfd - deskryptor do systemu plików
+ *
+ * @return {0} sukces, {-1} bład
+ */
+
+int simplefs_lseek(int fd, int whence, int offset, int fsfd);
+
+//Whence
+#define SEEK_SET 0 //ustawienie pozycji za początkiem pliku
+#define SEEK_CUR 1 //ustawienie pozycji po aktualnej pozycji
+#define SEEK_END 2 //ustawienie pozycji za końcem pliku
+
 
 
 #endif //_SIMPLEFS_H
+
