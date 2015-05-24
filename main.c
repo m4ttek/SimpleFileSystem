@@ -10,7 +10,8 @@ int main(void) {
     //simplefs_openfs(NULL);
     //simplefs_closefs(0);
 
-    int fdfs = open("filesystem", O_RDWR, 0644);
+    //int fdfs = open("filesystem", O_RDWR, 0644);
+    int fdfs = simplefs_openfs("filesystem");
     int fd = simplefs_open(NULL, READ_MODE, fdfs);
     simplefs_lseek(fd, SEEK_CUR, 0, fdfs);
     //simplefs_init("filesystem", 4096, 10);

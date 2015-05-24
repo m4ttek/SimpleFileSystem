@@ -1,5 +1,5 @@
 CC=gcc
-CGLAGS= -Wall
+CFLAGS= -Wall -g
 LFLAGS= -lm
 
 OBJS=simplefs.o main.o

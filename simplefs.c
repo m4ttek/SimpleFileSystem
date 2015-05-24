@@ -53,6 +53,18 @@ void _print_masterblock_info() {
 }
 
 /**
+ * Sprawdza czy podany master block jest rzeczywistym master blockiem, poprzez sprawdzenie magic_number
+ */
+
+int check_magic_number(master_block * mb) {
+    // sprawdzenie magic number
+    if (mb->magic_number != SIMPLEFS_MAGIC_NUMBER) {
+        return -1;
+    }
+    return 0;
+}
+
+/**
  * Funkcja inicjalizująca główne struktury systemu plików - master block, i-nodes, oraz jeśli wymagane - bitmap.
  * Sprawdza czy wczytany plik jest rzeczywiście systemem plików (przy użyciu magic number), w p.p. zwraca kod błedu.
  * W przypadku jakiegokolwiek błedu zamyka deskryptor pliku i zwraca kod błędu.
@@ -67,11 +79,11 @@ int _initialize_structures(int fd, int init_bitmaps) {
         close(fd);
         return -1;
     }
-    // sprawdzenie magic number
-    if (system_master_block->magic_number != SIMPLEFS_MAGIC_NUMBER) {
+    if(check_magic_number(system_master_block) == -1) {
         close(fd);
         return -1;
     }
+
     // inicjalizacja tablicy inodów
     unsigned int inodes_size = system_master_block->number_of_inode_table_blocks * system_master_block->block_size;
     inodes_table = (inode *) mmap(sizeof(master_block), inodes_size,
@@ -225,14 +237,27 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
     printf("Allocated %d bytes\n", fs_size);
 
     close(fd);
+    return 0;
 }
 
 int simplefs_openfs(char *path) { //Adam
-    return -1;
+    int fd = open(path, O_RDWR, 0644);
+    if(fd == -1) {
+        return -1;
+    }
+    master_block * mb = _get_master_block(fd);
+    int magic_check_result = check_magic_number(mb);
+    free(mb);
+    if(check_magic_number(mb) == -1) {
+        close(fd);
+        return -1;
+    }
+    return fd;
 }
 
 int simplefs_closefs(int fsfd) { //Adam
-    return -1;
+    close(fsfd);
+    return 0;
 }
 
 int simplefs_open(char *name, int mode, int fsfd) { //Michal
