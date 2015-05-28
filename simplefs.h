@@ -138,8 +138,8 @@ int simplefs_write(int fd, char *buf, int len, int fsfd);
 /**
  * Przesuwa pozycję o podany offset w pliku, pod warunkami określonymi przez whence
  * @param fd - deskryptor pliku
- * @param whene - jedna z trzech wartości (patrz niżej)
- * @param offset - liczba bajtów, o które chcamy się przesunąć
+ * @param whence - jedna z trzech wartości (patrz niżej)
+ * @param offset - liczba bajtów, o które chcemy się przesunąć
  * @param fsfd - deskryptor do systemu plików
  *
  * @return {0} sukces, {-1} bład
@@ -157,39 +157,49 @@ int simplefs_lseek(int fd, int whence, int offset, int fsfd);
 
 /**
  * Struktura metryczki dla pliku na dysku.
- * 
  */
 typedef struct inode_t {
-    char filename[255];
+    char filename[232];
+    long unsigned size;
+    unsigned int file_position;
     char type;
     char is_open;
     char mode; /* tryb dostepu */
-    unsigned file_position;
-    unsigned size;
 } inode;
 
+/**
+ * Struktura pierwszego bloku na dysku.
+ */
 typedef struct master_block_t {
-    unsigned block_size;
-    unsigned number_of_blocks;               //1 master, n/floor[block_size/sizeof(inode)], n blokow_uzytkowych n/liczbę blokow_użytkowych, 
-    unsigned number_of_free_blocks;          //Wielkość systemu plików = number_of_blocks + number_of_bitmap_blocks + number_of_inode_table_blocks + 1
-    unsigned data_start_block;              //numer bloku w całym systemie plików, który jest pierwszym blokiem danych
-    unsigned first_free_block_number;
-    unsigned number_of_bitmap_blocks;
-    unsigned number_of_inode_table_blocks; 
-    unsigned magic_number;
+    unsigned int block_size;
+    unsigned int number_of_blocks;               //1 master, n/floor[block_size/sizeof(inode)], n blokow_uzytkowych n/liczbę blokow_użytkowych,
+    unsigned int number_of_free_blocks;          //Wielkość systemu plików = number_of_blocks + number_of_bitmap_blocks + number_of_inode_table_blocks + 1
+    unsigned int data_start_block;               //numer bloku w całym systemie plików, który jest pierwszym blokiem danych
+    unsigned int first_free_block_number;        // pierwszy wolny blok
+    unsigned int number_of_bitmap_blocks;        // ilość bloków bitmapowych
+    unsigned int number_of_inode_table_blocks;
+    unsigned int magic_number;
     /* TODO struct inode root_node; */
 } master_block;
 
+/**
+ * Struktura bloku bitmapowego, zawierająca bity zajętości bloków.
+ */
 typedef struct block_bitmap_t {
     //bitmap length is block-size
 	char* bitmap; 
 } block_bitmap;
 
+/**
+ * Struktura reprezentująca blok zawierający fragment danych jednego pliku.
+ */
 typedef struct block_t {
 	char is_empty;
 	//data length is block_size - 1
 	char* data;
-	unsigned next_free_block;
+	unsigned int next_free_block;
+    unsigned int next_data_block;
+    unsigned int prev_data_block;
 } block;
 
 #endif //_SIMPLEFS_H
