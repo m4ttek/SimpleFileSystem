@@ -1,11 +1,11 @@
 CC=gcc
-CGLAGS=
-LFLAGS=
+CGLAGS= -Wall
+LFLAGS= -lm
 
 OBJS=simplefs.o main.o
 
 app: $(OBJS)
-	$(CC) $(LFGLAGS) $(OBJS) -o app
+	$(CC) $(OBJS) $(LFGLAGS) -o app
 
 main.o: main.c
 	$(CC) $(CFLAGS) -c main.c -o main.o
