@@ -5,6 +5,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#include <string.h>
 
 /**
  * Funkcja zwracająca docelowy rozmiar systemu plików na podstawie rozmiaru bloku i pożądanej liczby bloków danych
@@ -47,6 +48,14 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
     write(fd, &masterblock, sizeof(master_block));
     printf("Masterblock written\n");
     
+    //insert root inode
+    inode root_inode;
+    memset(&root_inode, 0, sizeof(inode));
+    strcpy(root_inode.filename, "/");
+    root_inode.type = INODE_DIR;
+    root_inode.is_open = FALSE;
+    write(fd, &root_inode, sizeof(inode));
+    
     //allocate space
     lseek(fd, fs_size - 1, SEEK_SET);
     write(fd, "\0", 1);
@@ -64,6 +73,7 @@ int simplefs_closefs(int fsfd) { //Adam
 }
 
 int simplefs_open(char *name, int mode, int fsfd) { //Michal
+    //need to find the right inode. name is a path separated by 
     return -1;
 }
 

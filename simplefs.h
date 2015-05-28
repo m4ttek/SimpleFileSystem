@@ -9,6 +9,9 @@
 #ifndef _SIMPLEFS_H
 #define _SIMPLEFSH_
 
+#define TRUE 1
+#define FALSE 0
+
 #define SIMPLEFS_MAGIC_NUMBER 0x4A5B
 
 /**
@@ -149,8 +152,8 @@ int simplefs_lseek(int fd, int whence, int offset, int fsfd);
 #define SEEK_CUR 1 //ustawienie pozycji po aktualnej pozycji
 #define SEEK_END 2 //ustawienie pozycji za końcem pliku
 
-#define DIR D
-#define FILE F
+#define INODE_DIR 'D'
+#define INODE_FILE 'F'
 
 /**
  * Struktura metryczki dla pliku na dysku.
@@ -161,7 +164,6 @@ typedef struct inode_t {
     char type;
     char is_open;
     char mode; /* tryb dostepu */
-    unsigned first_block_number;
     unsigned file_position;
     unsigned size;
 } inode;
