@@ -9,15 +9,22 @@
 #ifndef _SIMPLEFS_H
 #define _SIMPLEFSH_
 
+#define SIMPLEFS_MAGIC_NUMBER 0x4A5B
+
 /**
  * Tworzy system plików pod zadaną ścieżkę
  * @param path - ścieżka do tworzonego systemu plików
- * @param ::block_size - rozmar bloku w bajtach
+ * @param block_size - rozmiar bloku w bajtach - minimalnie 1024 B
  * @param number_of_blocks - liczba bloków
  *
  * @return {0} sukces, {-1} błąd
  */
-int simplefs_init(char *path, int block_size, int number_of_blocks);
+int simplefs_init(char *path, unsigned block_size, unsigned number_of_blocks);
+
+//Błędy
+#define HOST_FILE_ACCESS_ERROR -1
+#define BLOCK_SIZE_TOO_SMALL -2
+#define NUMBER_OF_BLOCKS_ZERO -3
 
 /**
  * Otwiera plik zawierający system plików spod zadanej ścieżki 
@@ -154,19 +161,20 @@ typedef struct inode_t {
     char type;
     char is_open;
     char mode; /* tryb dostepu */
-    int first_block_number;
-    int file_position;
-    int size;
+    unsigned first_block_number;
+    unsigned file_position;
+    unsigned size;
 } inode;
 
 typedef struct master_block_t {
-    int block_size;
-    int number_of_blocks;               //1 master, n/floor[block_size/sizeof(inode)], n blokow_uzytkowych n/liczbę blokow_użytkowych, 
-    int number_of_free_blocks;          //Wielkość systemu plików = number_of_blocks + number_of_bitmap_blocks + number_of_inode_table_blocks + 1
-    int first_free_block_number;
-    int number_of_bitmap_blocks;
-    int number_of_inode_table_blocks; 
-    int magic_number;
+    unsigned block_size;
+    unsigned number_of_blocks;               //1 master, n/floor[block_size/sizeof(inode)], n blokow_uzytkowych n/liczbę blokow_użytkowych, 
+    unsigned number_of_free_blocks;          //Wielkość systemu plików = number_of_blocks + number_of_bitmap_blocks + number_of_inode_table_blocks + 1
+    unsigned data_start_block;              //numer bloku w całym systemie plików, który jest pierwszym blokiem danych
+    unsigned first_free_block_number;
+    unsigned number_of_bitmap_blocks;
+    unsigned number_of_inode_table_blocks; 
+    unsigned magic_number;
     /* TODO struct inode root_node; */
 } master_block;
 
@@ -179,7 +187,7 @@ typedef struct block_t {
 	char is_empty;
 	//data length is block_size - 1
 	char* data;
-	int next_free_block;
+	unsigned next_free_block;
 } block;
 
 #endif //_SIMPLEFS_H

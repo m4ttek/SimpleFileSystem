@@ -4,24 +4,55 @@
 #include <sys/stat.h>
 #include <math.h>
 #include <stdio.h>
+#include <sys/mman.h>
 
-int _file_system_size(int block_size, int number_of_blocks) {
-    return 1 +
-        ceil((double) number_of_blocks / (block_size * 8)) +
-        ceil((double) number_of_blocks / floor((double) block_size / sizeof(inode))) +
-        number_of_blocks;
+/**
+ * Funkcja zwracająca docelowy rozmiar systemu plików na podstawie rozmiaru bloku i pożądanej liczby bloków danych
+ * @return iilość bajtów, które będzie zajmował system plików
+ */
+master_block _get_masterblock(unsigned block_size, unsigned number_of_blocks) {
+    master_block masterblock;
+    masterblock.block_size = block_size;
+    masterblock.number_of_blocks = number_of_blocks;
+    masterblock.number_of_free_blocks = number_of_blocks;
+    masterblock.first_free_block_number = 0;
+    masterblock.number_of_bitmap_blocks = ceil((double) number_of_blocks / (block_size * 8));
+    masterblock.number_of_inode_table_blocks = ceil((double) number_of_blocks / floor((double) block_size / sizeof(inode)));
+    masterblock.data_start_block = 1 + masterblock.number_of_bitmap_blocks + masterblock.number_of_inode_table_blocks;
+    masterblock.magic_number = SIMPLEFS_MAGIC_NUMBER;
+    return masterblock;
 }
 
-int simplefs_init(char * path, int block_size, int number_of_blocks) { //Michał
+int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) { //Michał
+    
+    if(block_size < 1024) {
+        return BLOCK_SIZE_TOO_SMALL;
+    }
+    
+    if(number_of_blocks == 0) {
+        return NUMBER_OF_BLOCKS_ZERO;
+    }
     
     int fd = open(path, O_WRONLY | O_CREAT, 0644);
     if(fd == -1) {
-        return -1;
+        return HOST_FILE_ACCESS_ERROR;
     }
-    lseek(fd, _file_system_size(block_size, number_of_blocks));
-    printf("dupa: %d ", _file_system_size(block_size, number_of_blocks));
+    
+    //get master block
+    master_block masterblock = _get_masterblock(block_size, number_of_blocks);
+    unsigned fs_size = (1 + masterblock.number_of_bitmap_blocks + masterblock.number_of_inode_table_blocks + 
+            masterblock.number_of_blocks) * masterblock.block_size;
+    
+    //insert master block
+    write(fd, &masterblock, sizeof(master_block));
+    printf("Masterblock written\n");
+    
+    //allocate space
+    lseek(fd, fs_size - 1, SEEK_SET);
+    write(fd, "\0", 1);
+    printf("Allocated %d bytes\n", fs_size);
+    
     close(fd);
-   // if(fd == )
 }
 
 int simplefs_openfs(char *path) { //Adam

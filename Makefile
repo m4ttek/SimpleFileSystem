@@ -5,7 +5,7 @@ LFLAGS= -lm
 OBJS=simplefs.o main.o
 
 app: $(OBJS)
-	$(CC) $(OBJS) $(LFGLAGS) -o app
+	$(CC) $(OBJS) $(LFLAGS) -o app
 
 main.o: main.c
 	$(CC) $(CFLAGS) -c main.c -o main.o
