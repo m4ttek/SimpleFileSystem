@@ -142,7 +142,44 @@ int simplefs_lseek(int fd, int whence, int offset, int fsfd);
 #define SEEK_CUR 1 //ustawienie pozycji po aktualnej pozycji
 #define SEEK_END 2 //ustawienie pozycji za końcem pliku
 
+#define DIR 'D'
+#define FILE 'F'
 
+/**
+ * Struktura metryczki dla pliku na dysku.
+ * 
+ */
+typedef struct inode_t {
+    char filename[255];
+    char type;
+    char is_open;
+    char mode; /* tryb dostepu */
+    int first_block_number;
+    int file_position;
+    int size;
+} inode;
+
+typedef struct master_block_t {
+    int block_size;
+    int number_of_blocks;               //1 ster, n/floor[block_size/sizeof(inode)], n blokow_uzytkowych n/liczbę blokow_użytkowych, 
+    int number_of_free_blocks;          //Wielkość systemu plików = number_of_blocks + number_of_bitmap_blocks + number_of_inode_table_blocks + 1
+    int first_free_block_number;
+    int number_of_bitmap_blocks;
+    int number_of_inode_table_blocks; 
+    int magic_number;
+    /* TODO struct inode root_node; */
+} master_block;
+
+typedef struct block_bitmap_t {
+    //bitmap length is block-size
+	char* bitmap; 
+} block_bitmap;
+
+typedef struct block_t {
+	char is_empty;
+	//data length is block_size - 1
+	char* data;
+	int next_free_block;
+} block;
 
 #endif //_SIMPLEFS_H
-

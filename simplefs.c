@@ -1,7 +1,13 @@
 #include "simplefs.h"
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
 
 int simplefs_init(char * path, int block_size, int number_of_blocks) {
-    return -1;
+    
+    int fd = open(path, O_WRONLY | O_CREAT);
+    if(fd == )
 }
 
 int simplefs_openfs(char *path) {
