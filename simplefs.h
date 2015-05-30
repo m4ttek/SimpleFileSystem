@@ -15,6 +15,7 @@
 #define FALSE 0
 
 #define SIMPLEFS_MAGIC_NUMBER 0x4A5B
+#define FILE_NAME_LENGTH (256 - 2 * sizeof(long) - 2 * sizeof(char))
 
 /**
  * Tworzy system plików pod zadaną ścieżkę
@@ -161,7 +162,7 @@ int simplefs_lseek(int fd, int whence, int offset, int fsfd);
  * Struktura metryczki dla pliku na dysku.
  */
 typedef struct inode_t {
-    char filename[256 - 2 * sizeof(long) - 2 * sizeof(char)];
+    char filename[FILE_NAME_LENGTH];
     char type;
     char mode; /* tryb dostepu */
     unsigned long size;
@@ -189,7 +190,7 @@ typedef struct master_block_t {
  */
 typedef struct block_bitmap_t {
     //bitmap length is block-size
-	char* bitmap; 
+	char* bitmap;
 } block_bitmap;
 
 /**
@@ -202,7 +203,7 @@ typedef struct block_t {
 } block;
 
 typedef struct file_signature_t {
-    char name[256 - 2 * sizeof(long) - 3 * sizeof(char)];
+    char name[FILE_NAME_LENGTH];
     unsigned long inode_no;
 } file_signature;
 
