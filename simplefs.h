@@ -9,6 +9,8 @@
 #ifndef _SIMPLEFS_H
 #define _SIMPLEFSH_
 
+#include "uthash.h"
+
 #define TRUE 1
 #define FALSE 0
 
@@ -159,12 +161,12 @@ int simplefs_lseek(int fd, int whence, int offset, int fsfd);
  * Struktura metryczki dla pliku na dysku.
  */
 typedef struct inode_t {
-    char filename[232];
+    char filename[256 - 2 * sizeof(long) - 3 * sizeof(char)];
     long unsigned size;
-    unsigned int file_position;
     char type;
     char is_open;
     char mode; /* tryb dostepu */
+    long first_data_block;
 } inode;
 
 /**
@@ -172,12 +174,13 @@ typedef struct inode_t {
  */
 typedef struct master_block_t {
     unsigned int block_size;
-    unsigned int number_of_blocks;               //1 master, n/floor[block_size/sizeof(inode)], n blokow_uzytkowych n/liczbę blokow_użytkowych,
-    unsigned int number_of_free_blocks;          //Wielkość systemu plików = number_of_blocks + number_of_bitmap_blocks + number_of_inode_table_blocks + 1
+    unsigned long number_of_blocks;               //1 master, n/floor[block_size/sizeof(inode)], n blokow_uzytkowych n/liczbę blokow_użytkowych,
+    unsigned long number_of_free_blocks;          //Wielkość systemu plików = number_of_blocks + number_of_bitmap_blocks + number_of_inode_table_blocks + 1
     unsigned int data_start_block;               //numer bloku w całym systemie plików, który jest pierwszym blokiem danych
-    unsigned int first_free_block_number;        // pierwszy wolny blok
-    unsigned int number_of_bitmap_blocks;        // ilość bloków bitmapowych
-    unsigned int number_of_inode_table_blocks;
+    unsigned long first_free_block_number;        // pierwszy wolny blok
+    unsigned long number_of_bitmap_blocks;        // ilość bloków bitmapowych
+    unsigned long number_of_inode_table_blocks;
+    unsigned long first_inode_table_block;
     unsigned int magic_number;
     /* TODO struct inode root_node; */
 } master_block;
@@ -197,9 +200,23 @@ typedef struct block_t {
 	char is_empty;
 	//data length is block_size - 1
 	char* data;
-	unsigned int next_free_block;
-    unsigned int next_data_block;
-    unsigned int prev_data_block;
+    unsigned long next_data_block;
 } block;
+
+typedef struct file_signature_t {
+    char name[256 - 2 * sizeof(long) - 3 * sizeof(char)];
+    unsigned long inode_no;
+} file_signature;
+
+/**
+ * Struktura reprezentująca unixową strukturę file - tutaj zawiera pozycję w otwartym pliku. Dla każdego wywołania
+ * simplefs_open() będzie tworzona nowa taka struktura. Kolejne instancje tej strukturą będą przechowywane w mapie haszującej
+ * Jak używać mapy hashującej: http://troydhanson.github.io/uthash/
+ */
+typedef struct file_t {
+    int fd;
+    long position;
+    UT_hash_handle hh; //makes the struct hashable
+} file;
 
 #endif //_SIMPLEFS_H
