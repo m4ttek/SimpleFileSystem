@@ -161,12 +161,11 @@ int simplefs_lseek(int fd, int whence, int offset, int fsfd);
  * Struktura metryczki dla pliku na dysku.
  */
 typedef struct inode_t {
-    char filename[256 - 2 * sizeof(long) - 3 * sizeof(char)];
-    long unsigned size;
+    char filename[256 - 2 * sizeof(long) - 2 * sizeof(char)];
     char type;
-    char is_open;
     char mode; /* tryb dostepu */
-    long first_data_block;
+    unsigned long size;
+    unsigned long first_data_block;
 } inode;
 
 /**
@@ -197,8 +196,7 @@ typedef struct block_bitmap_t {
  * Struktura reprezentująca blok zawierający fragment danych jednego pliku.
  */
 typedef struct block_t {
-	char is_empty;
-	//data length is block_size - 1
+	//data length is block_size - 8 (next_data_block)
 	char* data;
     unsigned long next_data_block;
 } block;
