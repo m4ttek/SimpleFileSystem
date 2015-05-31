@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
-#include "CUnit-2.1-3/CUnit/Headers/Basic.h"
-#include "CUnit-2.1-3/CUnit/Headers/CUnit.h"
+#include "CUnit/Basic.h"
+#include "CUnit/CUnit.h"
 
 /* Pointer to the file used by the tests. */
 static FILE* temp_file = NULL;
