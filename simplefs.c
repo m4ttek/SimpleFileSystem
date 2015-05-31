@@ -27,7 +27,7 @@ file * open_files = NULL;
 
 /**
  * Funkcja zwracająca docelowy rozmiar systemu plików na podstawie rozmiaru bloku i pożądanej liczby bloków danych
- * @return iilość bajtów, które będzie zajmował system plików
+ * @return przygotowany master_block, gotowy do umieszczenia go na dysku
  */
 master_block get_initial_master_block(unsigned block_size, unsigned number_of_blocks) {
     master_block masterblock;
@@ -94,6 +94,10 @@ int _initialize_structures(int fd, int init_bitmaps) {
     return 0;
 }
 
+/**
+ * Funkcja czytająca z dysku blok określony numerem bloku z offsetem
+ * @return odczytany blok
+ */
 block* _read_block(int fd, long block_no, long block_offset, long block_size) {
     block* blockRead = malloc(sizeof(block));
     lseek(fd, block_offset * block_size, SEEK_SET);
@@ -101,14 +105,29 @@ block* _read_block(int fd, long block_no, long block_offset, long block_size) {
     return blockRead;
 }
 
-inode* _get_inode_in_path(int fd, inode* parent_inode, char* name, master_block* masterblock) {
+/**
+ * Funkcja czytająca inode katalogu głównego /
+ * @return odczytany inode
+ */
+inode* _get_root_inode(int fd, master_block* masterblock) {
+    lseek(fd, masterblock->first_inode_table_block * masterblock->block_size, SEEK_SET);
+    inode* root_inode = malloc(sizeof(inode));
+    read(fd, root_inode, sizeof(inode));
+    return root_inode;
+}
+
+/**
+ * Funkcja znajdująca inode pliku znajdującego się w katalogu reprezentowanym przez dany inode
+ * @return znaleziony inode
+ */
+inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* masterblock) {
     if(parent_inode->type != INODE_DIR) {
         return NULL;
     }
     block* dir_block = _read_block(fd, parent_inode->first_data_block, masterblock->data_start_block, masterblock->block_size);
     long i;
     while(1) {
-        for(i = 0; i < masterblock->block_size; i += sizeof(file_signature)) {
+        for(i = 0; i < masterblock->block_size - sizeof(file_signature); i += sizeof(file_signature)) {
             file_signature* signature = (file_signature*) (dir_block + i);
             if(strcmp(name, signature->name) == 0) {
                 //calculate number of inode table block, where we'll find the right node
@@ -122,13 +141,47 @@ inode* _get_inode_in_path(int fd, inode* parent_inode, char* name, master_block*
             }
         }
         if(dir_block->next_data_block == NULL) {
+            free(dir_block);
             return NULL;
         }
         dir_block = _read_block(fd, dir_block->next_data_block, masterblock->data_start_block, masterblock->block_size);
     }
 }
 
-master_block* get_master_block(int fd) {
+/**
+ * Funkcja znajdująca inode pliku reprezentowanego przez pełną ścieżkę (np. /dir/file)
+ * @return znelziony inode
+ */
+inode* _get_inode_by_path(char* path, master_block* masterblock, int fd) {
+    unsigned path_index = 1;
+    unsigned i = 0;
+    char* path_part = malloc(strlen(path));
+    inode* current_inode = _get_root_inode(fd, masterblock);
+    while(1) {
+        while(path[path_index] != '/' && path[path_index] != '\0') {
+            path_part[i++] = path[path_index++];
+        }
+        path_part[i] = '\0';
+        inode* new_inode = _get_inode_in_dir(fd, current_inode, path_part, masterblock);
+        free(current_inode);
+        if(new_inode == NULL) {
+            free(path_part);
+            return NULL;
+        }
+        current_inode = new_inode;
+        if(path[path_index] == '\0') {
+            break;
+        }
+    }
+    free(path_part);
+    return current_inode;
+}
+
+/**
+ * Funkcja odczytująca master block z dysku
+ * @return odczytany master block
+ */
+master_block* _get_master_block(int fd) {
     lseek(fd, 0, SEEK_SET);
     master_block* masterblock = malloc(sizeof(master_block));
     read(fd, masterblock, sizeof(master_block));
@@ -136,42 +189,41 @@ master_block* get_master_block(int fd) {
 }
 
 int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) { //Michał
-    
+
     if(block_size < 1024) {
         return BLOCK_SIZE_TOO_SMALL;
     }
-    
+
     if(number_of_blocks == 0) {
         return NUMBER_OF_BLOCKS_ZERO;
     }
-    
+
     int fd = open(path, O_WRONLY | O_CREAT, 0644);
     if(fd == -1) {
         return HOST_FILE_ACCESS_ERROR;
     }
-    
+
     //get master block
     master_block masterblock = get_initial_master_block(block_size, number_of_blocks);
-    unsigned fs_size = (1 + masterblock.number_of_bitmap_blocks + masterblock.number_of_inode_table_blocks + 
+    unsigned fs_size = (1 + masterblock.number_of_bitmap_blocks + masterblock.number_of_inode_table_blocks +
             masterblock.number_of_blocks) * masterblock.block_size;
-    
+
     //insert master block
     write(fd, &masterblock, sizeof(master_block));
     printf("Masterblock written\n");
-    
+
     //insert root inode
     inode root_inode;
     memset(&root_inode, 0, sizeof(inode));
     strcpy(root_inode.filename, "/");
     root_inode.type = INODE_DIR;
-    root_inode.is_open = FALSE;
     write(fd, &root_inode, sizeof(inode));
-    
+
     //allocate space
     lseek(fd, fs_size - 1, SEEK_SET);
     write(fd, "\0", 1);
     printf("Allocated %d bytes\n", fs_size);
-    
+
     close(fd);
 }
 
@@ -185,8 +237,35 @@ int simplefs_closefs(int fsfd) { //Adam
 
 int simplefs_open(char *name, int mode, int fsfd) { //Michal
     //need to find the right inode. name is a path separated by /
-    if(name)
-    return -1;
+    if(name[0] != '/' || strlen(name) <= 2) {
+        return FILE_DOESNT_EXIST;
+    }
+    master_block* masterblock = _get_master_block(fsfd);
+    unsigned path_index = 1;
+    unsigned i = 0;
+    inode* file_inode = _get_inode_by_path(name, masterblock, fsfd);
+    if(file_inode == NULL) {
+        free(masterblock);
+        return FILE_DOESNT_EXIST;
+    }
+    //file_inode now points to the real file
+    //need to create file struct
+    i = 0;
+    while(1) {
+        file* file_found;
+        HASH_FIND_INT( open_files, &i, file_found);
+        if(file_found == NULL) {
+            break;
+        }
+        i++;
+    }
+    //got the first free descriptor
+    file* new_file = malloc(sizeof(file));
+    new_file->fd = i;
+    new_file->position = 0;
+    HASH_ADD_INT(open_files, fd, new_file);
+    free(masterblock);
+    return i;
 }
 
 int simplefs_unlink(char *name, int fsfd) { //Michal
