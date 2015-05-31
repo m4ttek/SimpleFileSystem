@@ -13,12 +13,6 @@
  * ---------------------------------------------------------------------------------------------------------------------
  * Sekcja danych globalnych do wykorzystania we wszystkich funkcjach.
  */
-master_block * system_master_block = NULL;
-
-inode * inodes_table = NULL;
-
-block_bitmap * bitmaps = NULL;
-
 file * open_files = NULL;
 /*
  * ---------------------------------------------------------------------------------------------------------------------
@@ -43,7 +37,7 @@ master_block get_initial_master_block(unsigned block_size, unsigned number_of_bl
     return masterblock;
 }
 
-void _print_masterblock_info() {
+void _print_masterblock_info(master_block * system_master_block) {
     if (system_master_block == NULL) {
         printf("System master block was not initialized!");
     }
@@ -66,44 +60,68 @@ int check_magic_number(master_block * mb) {
 
 /**
  * Funkcja inicjalizująca główne struktury systemu plików - master block, i-nodes, oraz jeśli wymagane - bitmap.
- * Sprawdza czy wczytany plik jest rzeczywiście systemem plików (przy użyciu magic number), w p.p. zwraca kod błedu.
- * W przypadku jakiegokolwiek błedu zamyka deskryptor pliku i zwraca kod błędu.
+ * Sprawdza czy wczytany plik jest rzeczywiście systemem plików (przy użyciu magic number), w p.p. zwraca NULL.
+ * W przypadku jakiegokolwiek błedu zamyka deskryptor pliku i zwraca NULL.
  *
  * @param fd deskryptor pliku
- * @return 0 - wszystko ok,
+ * @param init_bitmaps jeśli != 0 inicjalizuje bitmapę
+ * @return initialized_structures* wskaźnik na zainicjalizowane strutkury systemu pliku, w przypadku błędu - NULL
  */
-int _initialize_structures(int fd, int init_bitmaps) {
+initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
+    initialized_structures * initialized_structures_pointer = malloc(sizeof(initialized_structures));
+    printf("wchodze");
     // zamapowanie master blocka
-    system_master_block = (master_block *) mmap(NULL, sizeof(master_block), PROT_READ, MAP_SHARED, fd, 0);
-    if (system_master_block == (master_block *) MAP_FAILED) {
+    master_block * master_block_pointer
+            = (master_block *) mmap(NULL, sizeof(master_block), PROT_READ, MAP_SHARED, fd, 0);
+    if (master_block_pointer == (master_block *) MAP_FAILED) {
         close(fd);
-        return -1;
+        return NULL;
     }
-    if(check_magic_number(system_master_block) == -1) {
+    if(check_magic_number(master_block_pointer) == -1) {
+        munmap(0, sizeof(master_block));
         close(fd);
-        return -1;
-    }
-
-    // inicjalizacja tablicy inodów
-    unsigned int inodes_size = system_master_block->number_of_inode_table_blocks * system_master_block->block_size;
-    inodes_table = (inode *) mmap(sizeof(master_block), inodes_size,
-                       PROT_READ | PROT_WRITE, MAP_SHARED, fd, 1 * system_master_block->block_size);
-    if (inodes_table == MAP_FAILED) {
-        close(fd);
-        return -1;
+        return NULL;
     }
 
     // pobranie bitmapy
+    block_bitmap * block_bitmap_pointer = NULL;
+    unsigned int bitmaps_size = 0;
     if (init_bitmaps != 0) {
-        unsigned int bitmaps_size = system_master_block->number_of_bitmap_blocks * system_master_block->block_size;
-        bitmaps = (block_bitmap *) mmap(sizeof(master_block) + inodes_size, bitmaps_size,
-                       PROT_READ | PROT_WRITE, MAP_SHARED, fd, inodes_size + 1 * system_master_block->block_size);
-        if (bitmaps == MAP_FAILED) {
+        bitmaps_size = master_block_pointer->number_of_bitmap_blocks * master_block_pointer->block_size;
+        block_bitmap_pointer = (block_bitmap *) mmap( (void *) sizeof(master_block), bitmaps_size,
+                                                     PROT_READ | PROT_WRITE, MAP_SHARED, fd, master_block_pointer->block_size);
+        if (block_bitmap_pointer == MAP_FAILED) {
+            munmap(0, sizeof(master_block));
             close(fd);
-            return -1;
+            return NULL;
         }
     }
-    return 0;
+
+    // inicjalizacja tablicy inodów
+    unsigned int inodes_size = master_block_pointer->number_of_inode_table_blocks * master_block_pointer->block_size;
+    inode * inodes_table = (inode *) mmap( (void *) sizeof(master_block) + bitmaps_size, inodes_size,
+                       PROT_READ | PROT_WRITE, MAP_SHARED, fd, 1 * master_block_pointer->block_size + bitmaps_size);
+    if (inodes_table == MAP_FAILED) {
+        munmap(0, sizeof(master_block) + bitmaps_size);
+        close(fd);
+        return NULL;
+    }
+
+    initialized_structures_pointer->master_block_pointer = master_block_pointer;
+    initialized_structures_pointer->block_bitmap_pointer = block_bitmap_pointer;
+    initialized_structures_pointer->inode_table = inodes_table;
+    return initialized_structures_pointer;
+}
+
+/**
+ * Funkcja bezpiecznie usuwa struktury związane z systemem plików.
+ * Powinna być wywowałana zawsze po zakończeniu pracy nad strukturami zwróconymi przez funkcję {_initialize_structures}
+ */
+void _uninitilize_structures(initialized_structures * initialized_structures_pointer) {
+    int result = munmap(NULL, initialized_structures_pointer->master_block_pointer->block_size *
+                   (1 + initialized_structures_pointer->master_block_pointer->number_of_bitmap_blocks
+                    + initialized_structures_pointer->master_block_pointer->number_of_inode_table_blocks));
+    printf("Munmap result: %d", result);
 }
 
 /**
@@ -314,11 +332,12 @@ int simplefs_write(int fd, char *buf, int len, int fsfd) { //Mateusz
 }
 
 int simplefs_lseek(int fd, int whence, int offset, int fsfd) { //Mateusz
-    if (_initialize_structures(fsfd, 1) < 0) {
+    initialized_structures * initialized_structures_pointer = _initialize_structures(fsfd, 1);
+    if (initialized_structures_pointer != NULL) {
         printf("Blad");
         return -1;
     }
-    _print_masterblock_info();
+    //_print_masterblock_info(initialized_structures_pointer->master_block_pointer);
     int effective_offset = 0;
     switch(whence) {
         case SEEK_SET:
@@ -333,5 +352,6 @@ int simplefs_lseek(int fd, int whence, int offset, int fsfd) { //Mateusz
             return - 1;
     }
 
+    //_uninitilize_structures(initialized_structures_pointer);
     return 0;
 }

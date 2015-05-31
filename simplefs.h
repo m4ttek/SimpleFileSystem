@@ -218,4 +218,10 @@ typedef struct file_t {
     UT_hash_handle hh; //makes the struct hashable
 } file;
 
+typedef struct initialized_structures_t {
+    master_block * master_block_pointer;
+    block_bitmap * block_bitmap_pointer;
+    inode * inode_table;
+} initialized_structures;
+
 #endif //_SIMPLEFS_H
