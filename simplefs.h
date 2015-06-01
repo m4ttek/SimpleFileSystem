@@ -2,8 +2,8 @@
  * @file simplefs.h
  * @author Mateusz Kamiński
  * @author Adam Mościcki
- * @author Michał Pluta 
- * @brief Definicje funkcji systemu plików 
+ * @author Michał Pluta
+ * @brief Definicje funkcji systemu plików
  */
 
 #ifndef _SIMPLEFS_H
@@ -16,6 +16,8 @@
 
 #define SIMPLEFS_MAGIC_NUMBER 0x4A5B
 #define FILE_NAME_LENGTH (256 - 2 * sizeof(long) - 2 * sizeof(char))
+
+#define BLOCK_DATA_SIZE (masterblock->block_size - sizeof(long))
 
 /**
  * Tworzy system plików pod zadaną ścieżkę
@@ -33,7 +35,7 @@ int simplefs_init(char *path, unsigned block_size, unsigned number_of_blocks);
 #define NUMBER_OF_BLOCKS_ZERO -3
 
 /**
- * Otwiera plik zawierający system plików spod zadanej ścieżki 
+ * Otwiera plik zawierający system plików spod zadanej ścieżki
  * @param path - ścieżka do systemu plików
  *
  * @return {deskryptor} sukces, {-1} błąd
@@ -105,10 +107,10 @@ int simplefs_mkdir (char *name, int fsfd);
 int simplefs_creat (char *name, int mode, int fsfd);
 
 //Zwracane
-#define OK 0 
-#define FILE_ALREADY_EXISTS -1 
-#define WRONG_MODE -2 
-#define DIR_DOESNT_EXIST -3 
+#define OK 0
+#define FILE_ALREADY_EXISTS -1
+#define WRONG_MODE -2
+#define DIR_DOESNT_EXIST -3
 #define NAME_TOO_LONG -4
 #define NO_FREE_BLOCKS -5
 
@@ -119,7 +121,7 @@ int simplefs_creat (char *name, int mode, int fsfd);
  * @param len - rozmiar bufora
  * @param fsfd - deskryptor do systemu plików
  *
- * @return {wczytana wilkosc} jesli wczytana wielkosc < len => koniec pliku, 
+ * @return {wczytana wilkosc} jesli wczytana wielkosc < len => koniec pliku,
  */
 int simplefs_read(int fd, char *buf, int len, int fsfd);
 
@@ -135,8 +137,8 @@ int simplefs_read(int fd, char *buf, int len, int fsfd);
 int simplefs_write(int fd, char *buf, int len, int fsfd);
 
 //Zwracane
-#define OK 0 
-#define CANNOT_EXTEND_FILE -1 
+#define OK 0
+#define CANNOT_EXTEND_FILE -1
 
 /**
  * Przesuwa pozycję o podany offset w pliku, pod warunkami określonymi przez whence
@@ -204,7 +206,7 @@ typedef struct block_t {
 
 typedef struct file_signature_t {
     char name[FILE_NAME_LENGTH];
-    unsigned long inode_no;
+    unsigned long inode_no; //inode_no == 0 oznacza sygnaturę nieważną
 } file_signature;
 
 /**

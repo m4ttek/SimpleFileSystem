@@ -8,12 +8,14 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <pthread.h>
 
 /*
  * ---------------------------------------------------------------------------------------------------------------------
  * Sekcja danych globalnych do wykorzystania we wszystkich funkcjach.
  */
 file * open_files = NULL;
+pthread_mutex_t open_files_write_mutex = PTHREAD_MUTEX_INITIALIZER;
 /*
  * ---------------------------------------------------------------------------------------------------------------------
  * ---------------------------------------------------------------------------------------------------------------------
@@ -157,8 +159,8 @@ inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* 
     block* dir_block = _read_block(fd, parent_inode->first_data_block, masterblock->data_start_block, masterblock->block_size);
     long i;
     while(1) {
-        for(i = 0; i < masterblock->block_size - sizeof(file_signature); i += sizeof(file_signature)) {
-            file_signature* signature = (file_signature*) (dir_block + i);
+        for(i = 0; i <= masterblock->block_size - sizeof(file_signature); i += sizeof(file_signature)) {
+            file_signature* signature = (file_signature*) (dir_block->data + i * sizeof(char));
             if(strcmp(name, signature->name) == 0) {
                 //calculate number of inode table block, where we'll find the right node
                 long block_to_read = signature->inode_no / masterblock->block_size;
@@ -179,13 +181,16 @@ inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* 
 }
 
 /**
- * Funkcja znajdująca inode pliku reprezentowanego przez pełną ścieżkę (np. /dir/file)
+ * Funkcja znajdująca inode pliku/katalogu reprezentowanego przez pełną ścieżkę (np. /dir/file)
  * @return znelziony inode
  */
 inode* _get_inode_by_path(char* path, master_block* masterblock, int fd) {
+    if(path[0] != '/') {
+        return NULL;
+    }
     unsigned path_index = 1;
     unsigned i = 0;
-    char* path_part = malloc(strlen(path));
+    char* path_part = malloc(strlen(path) * sizeof(char));
     inode* current_inode = _get_root_inode(fd, masterblock);
     while(1) {
         while(path[path_index] != '/' && path[path_index] != '\0') {
@@ -216,6 +221,23 @@ master_block* _get_master_block(int fd) {
     master_block* masterblock = malloc(sizeof(master_block));
     read(fd, masterblock, sizeof(master_block));
     return masterblock;
+}
+
+/**
+ * Funkcja zwracająca podaną ścieżkę skróconą o ostatnią część - sluży więc do oddzielenia istniejącej ścieżki
+ * od nazwy pliku (folderu), który ma być utworzony
+ */
+char* _get_path_for_new_file(char* full_path) {
+    char* path = malloc(strlen(full_path) * sizeof(char));
+    strcpy(path, full_path);
+    int i;
+    for(i = strlen(path) - 1; i > 0; i--) {
+        if(path[i] == '/') {
+            path[i] = '\0';
+            return path;
+        }
+    }
+    return NULL;
 }
 
 int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) { //Michał
@@ -280,15 +302,15 @@ int simplefs_closefs(int fsfd) { //Adam
 
 int simplefs_open(char *name, int mode, int fsfd) { //Michal
     //need to find the right inode. name is a path separated by /
-    if(name[0] != '/' || strlen(name) <= 2) {
-        return FILE_DOESNT_EXIST;
-    }
     master_block* masterblock = _get_master_block(fsfd);
-    unsigned path_index = 1;
     unsigned i = 0;
     inode* file_inode = _get_inode_by_path(name, masterblock, fsfd);
     if(file_inode == NULL) {
         free(masterblock);
+        return FILE_DOESNT_EXIST;
+    } else if(file_inode->type != INODE_FILE) {
+        free(masterblock);
+        free(file_inode);
         return FILE_DOESNT_EXIST;
     }
     //file_inode now points to the real file
@@ -296,10 +318,12 @@ int simplefs_open(char *name, int mode, int fsfd) { //Michal
     i = 0;
     while(1) {
         file* file_found;
+        pthread_mutex_lock(open_files_write_mutex);
         HASH_FIND_INT( open_files, &i, file_found);
         if(file_found == NULL) {
             break;
         }
+        pthread_mutex_unlock(open_files_write_mutex);
         i++;
     }
     //got the first free descriptor
@@ -307,6 +331,7 @@ int simplefs_open(char *name, int mode, int fsfd) { //Michal
     new_file->fd = i;
     new_file->position = 0;
     HASH_ADD_INT(open_files, fd, new_file);
+    pthread_mutex_unlock(open_files_write_mutex);
     free(masterblock);
     return i;
 }
@@ -316,6 +341,24 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
 }
 
 int simplefs_mkdir(char *name, int fsfd) { //Michal
+    //separate new dir name from the path
+    char* path = _get_path_for_new_file(name);
+
+    master_block* masterblock = _get_master_block(fsfd);
+    inode* dir_inode = _get_inode_by_path(path, masterblock, fsfd);
+
+    //now, create a dir under that inode
+    block* current_block = _read_block(fsfd, dir_inode->first_data_block, masterblock->data_start_block, masterblock->block_size);
+    while(1) {
+        int i;
+        //lock(current_block)
+        for(i = 0; i <= BLOCK_DATA_SIZE - sizeof(file_signature); i += sizeof(file_signature)) {
+            file_signature* signature = (file_signature*) (current_block->data + i * sizeof(char));
+            if(signature->inode_no == 0) {
+                //inode wolny, można zająć!
+            }
+        }
+    }
     return -1;
 }
 
