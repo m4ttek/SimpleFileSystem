@@ -150,18 +150,23 @@ inode* _get_root_inode(int fd, master_block* masterblock) {
  * Funkcja znajdująca inode pliku znajdującego się w katalogu reprezentowanym przez dany inode
  * @return znaleziony inode
  */
-inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* masterblock) {
+inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* masterblock, unsigned long* inode_no) {
+    printf("_get_inode_in_dir %c", parent_inode->type);
     if(parent_inode->type != INODE_DIR) {
         return NULL;
     }
     block* dir_block = _read_block(fd, parent_inode->first_data_block, masterblock->data_start_block, masterblock->block_size);
     long i;
     while(1) {
+        printf("finding dir");
         for(i = 0; i < masterblock->block_size - sizeof(file_signature); i += sizeof(file_signature)) {
             file_signature* signature = (file_signature*) (dir_block + i);
             if(strcmp(name, signature->name) == 0) {
                 //calculate number of inode table block, where we'll find the right node
                 long block_to_read = signature->inode_no / masterblock->block_size;
+                //zapameitujemy numer inode w tablicy inodow
+                *inode_no = signature->inode_no;
+                printf("%d", signature->inode_no);
                 block* inode_block = _read_block(fd, block_to_read, masterblock->first_inode_table_block, masterblock->block_size);
                 inode* result_inode = malloc(sizeof(inode));
                 memcpy(result_inode, inode_block, sizeof(inode) * (signature->inode_no % masterblock->block_size));
@@ -180,9 +185,10 @@ inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* 
 
 /**
  * Funkcja znajdująca inode pliku reprezentowanego przez pełną ścieżkę (np. /dir/file)
+ * @param inode_no, parametr wyjsciowy, do zwrocenie polozenia inoda w tablicy inodow
  * @return znelziony inode
  */
-inode* _get_inode_by_path(char* path, master_block* masterblock, int fd) {
+inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigned long* inode_no) {
     unsigned path_index = 1;
     unsigned i = 0;
     char* path_part = malloc(strlen(path));
@@ -192,7 +198,7 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd) {
             path_part[i++] = path[path_index++];
         }
         path_part[i] = '\0';
-        inode* new_inode = _get_inode_in_dir(fd, current_inode, path_part, masterblock);
+        inode* new_inode = _get_inode_in_dir(fd, current_inode, path_part, masterblock, inode_no); //inode_no sie nie zmieni jak sie okaze ze path_part nie jest juz katalogiem
         free(current_inode);
         if(new_inode == NULL) {
             free(path_part);
@@ -286,7 +292,8 @@ int simplefs_open(char *name, int mode, int fsfd) { //Michal
     master_block* masterblock = _get_master_block(fsfd);
     unsigned path_index = 1;
     unsigned i = 0;
-    inode* file_inode = _get_inode_by_path(name, masterblock, fsfd);
+    unsigned long tmp;
+    inode* file_inode = _get_inode_by_path(name, masterblock, fsfd, &tmp);
     if(file_inode == NULL) {
         free(masterblock);
         return FILE_DOESNT_EXIST;
@@ -320,7 +327,37 @@ int simplefs_mkdir(char *name, int fsfd) { //Michal
 }
 
 int simplefs_creat(char *name, int mode, int fsfd) { //Adam
-    return -1;
+    int full_path_lenght = strlen(name);
+    int i;
+    for(i = full_path_lenght; i > 0 && name[i - 1] != '/'; i--) {
+    }
+    //ścieżka
+    char *path = (char*)malloc(i);
+    //nazwa
+    char *file_name = (char*)malloc(full_path_lenght - i + 1);
+    strncpy(path, name, i);
+    strncpy(file_name, name + i, full_path_lenght - i);
+    path[i] = '\0';
+    file_name[full_path_lenght - i] = '\0';
+    printf("%d", i);
+    printf("%s\n", path);
+    printf("%s\n", file_name);
+
+    master_block * masterblock =  _get_master_block(fsfd);
+    unsigned long inode_no;
+    inode * parent_node = _get_inode_by_path(path, masterblock, fsfd, &inode_no);
+    printf("%d", inode_no);
+    
+    // pobranie bitmapy
+    block_bitmap * block_bitmap_pointer = NULL;
+    int bitmaps_size = masterblock->number_of_bitmap_blocks * masterblock->block_size;
+    //jafcntl(
+    
+
+    free(parent_node);
+    free(masterblock);
+    free(path);
+    free(file_name);
 }
 
 int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
