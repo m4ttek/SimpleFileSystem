@@ -27,7 +27,7 @@ typedef struct write_params_t {
     char* data;             // dane do zapisu
     unsigned int data_length;        // długość danych
     int lock_blocks;        // czy mają być zablokowane bloki (czyli co właściwie?)
-    long file_offset;       // offset w pisanym pliku
+    long file_offset;       // offset w pisanym pliku (-1 = append)
 } write_params;
 
 /**
@@ -129,7 +129,7 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
  * Powinna być wywowałana zawsze po zakończeniu pracy nad strukturami zwróconymi przez funkcję {_initialize_structures}
  */
 void _uninitilize_structures(initialized_structures * initialized_structures_pointer) {
-    int result = munmap(NULL, initialized_structures_pointer->master_block_pointer->block_size *
+    int result = munmap(initialized_structures_pointer, initialized_structures_pointer->master_block_pointer->block_size *
                    (1 + initialized_structures_pointer->master_block_pointer->number_of_bitmap_blocks
                     + initialized_structures_pointer->master_block_pointer->number_of_inode_table_blocks));
     printf("Munmap result: %d", result);
@@ -614,41 +614,139 @@ int simplefs_mkdir(char *name, int fsfd) { //Michal
 }
 
 
+void _try_lock_lock_inode(master_block * mb, int fd) {
+    //lock inode
+    struct flock lock_inode;
+    lock_inode.l_type = F_WRLCK;
+    lock_inode.l_whence = SEEK_SET;
+    lock_inode.l_start = (mb->first_inode_table_block * mb->block_size + sizeof(inode) * 1);
+    lock_inode.l_len = sizeof(inode);
+    lock_inode.l_pid = getpid();
+    fcntl(fd, F_SETLK, &lock_inode);
+}
 
+void _unlock_lock_inode(master_block * mb, int fd) {
+    //lock inode
+    struct flock lock_inode;
+    lock_inode.l_type = F_UNLCK;
+    lock_inode.l_whence = SEEK_SET;
+    lock_inode.l_start = (mb->first_inode_table_block * mb->block_size + sizeof(inode) * 1);
+    lock_inode.l_len = sizeof(inode);
+    lock_inode.l_pid = getpid();
+    fcntl(fd, F_SETLK, &lock_inode);
+}
+
+void _lock_lock_file(master_block * mb, int fd) {
+    _try_lock_lock_inode(mb, fd);
+    //lock lock block
+    struct flock lock_block;
+    lock_block.l_type = F_WRLCK;
+    lock_block.l_whence = SEEK_SET;
+    lock_block.l_start = (mb->data_start_block);
+    lock_block.l_len = mb->block_size;
+    lock_block.l_pid = getpid();
+    fcntl(fd, F_SETLKW, &lock_block);
+    int * counter = (int *) mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    (*counter)++;
+    munmap(counter, sizeof(int));
+    //unlock lock block
+    lock_block.l_type = F_UNLCK;
+    fcntl(fd, F_SETLK, &lock_block);   
+}
+
+void _unlock_lock_file(master_block * mb, int fd) {
+    //lock lock block
+    struct flock lock_block;
+    lock_block.l_type = F_WRLCK;
+    lock_block.l_whence = SEEK_SET;
+    lock_block.l_start = (mb->data_start_block);
+    lock_block.l_len = mb->block_size;
+    lock_block.l_pid = getpid();
+    fcntl(fd, F_SETLKW, &lock_block);
+    int * counter = (int *) mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    (*counter)--;
+    int value = *counter;
+    munmap(counter, sizeof(int));
+    if(value != 0) {
+        _try_lock_lock_inode(mb, fd);
+    } else {
+        _unlock_lock_inode(mb, fd);
+    }
+    //unlock lock block
+    lock_block.l_type = F_UNLCK;
+    fcntl(fd, F_SETLK, &lock_block); 
+}
+
+/**
+ * TODO: sprawdzanei istnienia
+ */
 int simplefs_creat(char *name, int mode, int fsfd) { //Adam
-    int full_path_lenght = strlen(name);
-    int i;
-    for(i = full_path_lenght; i > 0 && name[i - 1] != '/'; i--) {
+
+    int result = OK;
+    int full_path_length = strlen(name);
+    int path_length;
+    for(path_length = full_path_length; path_length > 0 && name[path_length - 1] != '/'; path_length--) {
     }
     //ścieżka
-    char *path = (char*)malloc(i);
+    char *path = (char*)malloc(path_length);
     //nazwa
-    char *file_name = (char*)malloc(full_path_lenght - i + 1);
-    strncpy(path, name, i);
-    strncpy(file_name, name + i, full_path_lenght - i);
-    path[i] = '\0';
-    file_name[full_path_lenght - i] = '\0';
-    printf("%d", i);
+    char *file_name = (char*)malloc(full_path_length - path_length + 1);
+    strncpy(path, name, path_length);
+    int file_name_length;
+    if(full_path_length - path_length > FILE_NAME_LENGTH) {
+        return NAME_TOO_LONG;
+    } else {
+        file_name_length = full_path_length - path_length;
+    }
+    strncpy(file_name, name + path_length, full_path_length - path_length);
+    path[path_length] = '\0';
+    file_name[file_name_length] = '\0';
+    printf("%d", path_length);
     printf("%s\n", path);
     printf("%s\n", file_name);
-
-    master_block * masterblock =  _get_master_block(fsfd);
-    unsigned long inode_no;
-    inode * parent_node = _get_inode_by_path(path, masterblock, fsfd, &inode_no);
-    printf("%d", inode_no);
-    printf("\n%s\n", parent_node->filename);
-
-    // pobranie bitmapy
-    block_bitmap * block_bitmap_pointer = NULL;
-    int bitmaps_size = masterblock->number_of_bitmap_blocks * masterblock->block_size;
-    //jafcntl(
-
-
+    //blokujemy plik .lock
+    initialized_structures * is = _initialize_structures(fsfd, 0);
+    inode * parent_node;
+    _lock_lock_file(is->master_block_pointer, fsfd);
+    do {
+        unsigned long tmp;
+        parent_node = _get_inode_by_path(path, is->master_block_pointer, fsfd, &tmp);
+        if(parent_node == NULL) {
+            result = DIR_DOESNT_EXIST;
+            break;
+        }
+        printf("%d", tmp);
+        printf("\n%s\n", parent_node->filename);
+        inode new_file;
+        strcpy(new_file.filename, file_name);
+        new_file.type = 'F';
+        new_file.size = 0;
+        new_file.first_data_block = 0;
+        if(mode & READ_AND_WRITE != 0) {
+            result = WRONG_MODE;
+            break;
+        }
+        unsigned long inode_no = _insert_new_inode(&new_file ,is->master_block_pointer, fsfd);
+        path[path_length] = '\0'; //przerobic katalog na plik
+        write_params write_params_value;
+        write_params_value.fsfd = fsfd;
+        int fd = simplefs_open(path, READ_AND_WRITE, fsfd);
+        write_params_value.fd = fd;
+        file_signature fs;
+        strcpy(fs.name, file_name);
+        fs.inode_no = inode_no;
+        write_params_value.data = &fs;
+        write_params_value.data_length = sizeof(file_signature);
+        write_params_value.lock_blocks = TRUE;
+        write_params_value.file_offset = -1; //append
+        _write_unsafe(is, write_params_value);
+    } while( 0 );
+    _unlock_lock_file(is->master_block_pointer, fsfd);
+    _uninitilize_structures(is);
     free(parent_node);
-    free(masterblock);
     free(path);
     free(file_name);
-    return -1;
+    return result;
 }
 
 int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
