@@ -28,6 +28,9 @@ typedef struct write_params_t {
     unsigned int data_length;        // długość danych
     int lock_blocks;        // czy mają być zablokowane bloki (czyli co właściwie?)
     long file_offset;       // offset w pisanym pliku (-1 = append)
+    int (*for_each_record)(void*, int, void*);
+    int record_length;
+    void* additional_param;
 } write_params;
 
 /**
@@ -337,7 +340,7 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     unsigned long file_size = file_inode->size;
 
     // sprawdzenie poprawności dostępu do pliku
-    if (file_inode->mode == READ_MODE) {
+    if (file_structure->mode == READ_MODE) {
         _unblock_first_free_block(params.fsfd, &flock_structure);
         return WRONG_MODE;
     }
@@ -584,35 +587,35 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
 int simplefs_mkdir(char *name, int fsfd) { //Michal
     //separate new dir name from the path
     char* path = _get_path_for_new_file(name);
-    master_block* masterblock = _get_master_block(fsfd);
-    int inode_no;
-    inode* dir_inode = _get_inode_by_path(path, masterblock, fsfd, &inode_no);
+    initialized_structures* structures = _initialize_structures(fsfd, 1);
+    int fd = simplefs_open(path, READ_AND_WRITE, fsfd);
+    if(fd < 0) {
+        return PARENT_DIR_DOESNT_EXIST;
+    }
+    inode new_dir_inode;
+    strcpy(new_dir_inode.filename, name);
+    new_dir_inode.size = 0;
+    new_dir_inode.type = 'D';
+    unsigned long inode_no = _insert_new_inode(&new_dir_inode, structures->master_block_pointer, fsfd);
+
+    file_signature new_file_sig;
+    new_file_sig.inode_no = inode_no;
+    strcpy(new_file_sig.name, name);
 
     write_params params;
-    params.fd = fsfd;
+    params.fsfd = fsfd;
+    params.fd = fd;
     params.file_offset = -1;
     params.lock_blocks = 1;
-    //params.data =
+    params.data = (char*) (&new_file_sig);
+    params.data_length = sizeof(file_signature);
 
+    _write_unsafe(structures, params);
 
-    /*master_block* masterblock = _get_master_block(fsfd);
-    inode* dir_inode = _get_inode_by_path(path, masterblock, fsfd, NULL);
-
-    //now, create a dir under that inode
-    block* current_block = _read_block(fsfd, dir_inode->first_data_block, masterblock->data_start_block, masterblock->block_size);
-    while(1) {
-        int i;
-        //lock(current_block)
-        for(i = 0; i <= BLOCK_DATA_SIZE - sizeof(file_signature); i += sizeof(file_signature)) {
-            file_signature* signature = (file_signature*) (current_block->data + i * sizeof(char));
-            if(signature->inode_no == 0) {
-                //inode wolny, można zająć!
-            }
-        }
-    }*/
-    return -1;
+    free(structures);
+    simplefs_close(fd);
+    return 0;
 }
-
 
 void _try_lock_lock_inode(master_block * mb, int fd) {
     //lock inode
@@ -677,6 +680,16 @@ void _unlock_lock_file(master_block * mb, int fd) {
     fcntl(fd, F_SETLK, &lock_block); 
 }
 
+int simplefs_close(int fd) {
+    file* file_found;
+    HASH_FIND_INT( open_files, &fd, file_found);
+    if(file_found == NULL) {
+        return UNKNOWN_DESCRIPTOR;
+    }
+    HASH_DEL(open_files, file_found);
+    free(file_found);
+}
+
 /**
  * TODO: sprawdzanei istnienia
  */
@@ -739,6 +752,9 @@ int simplefs_creat(char *name, int mode, int fsfd) { //Adam
         write_params_value.data_length = sizeof(file_signature);
         write_params_value.lock_blocks = TRUE;
         write_params_value.file_offset = -1; //append
+        write_params_value.for_each_record = NULL;
+        write_params_value.record_length = 0;
+        write_params_value.additional_param = 0;
         _write_unsafe(is, write_params_value);
     } while( 0 );
     _unlock_lock_file(is->master_block_pointer, fsfd);
