@@ -142,6 +142,7 @@ block* _read_block(int fd, long block_no, long block_offset, long block_size) {
  * @return odczytany inode
  */
 inode* _get_root_inode(int fd, master_block* masterblock) {
+    printf("Seeking to %d\n", masterblock->first_inode_table_block * masterblock->block_size);
     lseek(fd, masterblock->first_inode_table_block * masterblock->block_size, SEEK_SET);
     inode* root_inode = malloc(sizeof(inode));
     read(fd, root_inode, sizeof(inode));
@@ -194,6 +195,11 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
     if(path[0] != '/') {
         return NULL;
     }
+    if(strlen(path) == 1) {
+        //root inode
+        *inode_no = 0;
+        return _get_root_inode(fd, masterblock);
+    }
     unsigned path_index = 1;
     unsigned i = 0;
     char* path_part = malloc(strlen(path) * sizeof(char));
@@ -223,9 +229,11 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
  * @return odczytany master block
  */
 master_block* _get_master_block(int fd) {
+    printf("get master block. fd = %X\n" + fd);
     lseek(fd, 0, SEEK_SET);
     master_block* masterblock = malloc(sizeof(master_block));
     read(fd, masterblock, sizeof(master_block));
+    printf("Read first inode table block: %d\n");
     return masterblock;
 }
 
@@ -288,6 +296,7 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
 
 int simplefs_openfs(char *path) { //Adam
     int fd = open(path, O_RDWR, 0644);
+    printf("OPEN FS. fd = %d\n" + fd);
     if(fd == -1) {
         return -1;
     }
@@ -351,7 +360,7 @@ int simplefs_mkdir(char *name, int fsfd) { //Michal
     //separate new dir name from the path
     char* path = _get_path_for_new_file(name);
 
-    master_block* masterblock = _get_master_block(fsfd);
+    /*master_block* masterblock = _get_master_block(fsfd);
     inode* dir_inode = _get_inode_by_path(path, masterblock, fsfd, NULL);
 
     //now, create a dir under that inode
@@ -365,7 +374,7 @@ int simplefs_mkdir(char *name, int fsfd) { //Michal
                 //inode wolny, można zająć!
             }
         }
-    }
+    }*/
     return -1;
 }
 
@@ -390,6 +399,7 @@ int simplefs_creat(char *name, int mode, int fsfd) { //Adam
     unsigned long inode_no;
     inode * parent_node = _get_inode_by_path(path, masterblock, fsfd, &inode_no);
     printf("%d", inode_no);
+    printf("\n%c\n", parent_node->filename);
 
     // pobranie bitmapy
     block_bitmap * block_bitmap_pointer = NULL;
