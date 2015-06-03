@@ -21,6 +21,15 @@ pthread_mutex_t open_files_write_mutex = PTHREAD_MUTEX_INITIALIZER;
  * ---------------------------------------------------------------------------------------------------------------------
  */
 
+typedef struct write_params_t {
+    int fd;                 // deskryptor pliku
+    inode* target_inode;    // pod jakim inodem należy zapisać
+    char* data;             // dane do zapisu
+    int data_length;        // długość danych
+    int lock_blocks;        // czy mają być zablokowane bloki (czyli co właściwie?)
+    long file_offset;       // offset w pisanym pliku
+} write_params;
+
 /**
  * Funkcja zwracająca docelowy rozmiar systemu plików na podstawie rozmiaru bloku i pożądanej liczby bloków danych
  * @return przygotowany master_block, gotowy do umieszczenia go na dysku
@@ -223,6 +232,10 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
     }
     free(path_part);
     return current_inode;
+}
+
+int _write_unsafe(write_params params) {
+    return 0;
 }
 
 /**
