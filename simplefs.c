@@ -146,6 +146,7 @@ inode* _get_root_inode(int fd, master_block* masterblock) {
     lseek(fd, masterblock->first_inode_table_block * masterblock->block_size, SEEK_SET);
     inode* root_inode = malloc(sizeof(inode));
     read(fd, root_inode, sizeof(inode));
+    printf("Read root inode. Name is %s. Type is %c and first data block is %d\n", root_inode->filename, root_inode->type, root_inode->first_data_block);
     return root_inode;
 }
 
@@ -229,11 +230,11 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
  * @return odczytany master block
  */
 master_block* _get_master_block(int fd) {
-    printf("get master block. fd = %X\n" + fd);
+    printf("get master block. fd = %d\n", fd);
     lseek(fd, 0, SEEK_SET);
     master_block* masterblock = malloc(sizeof(master_block));
     read(fd, masterblock, sizeof(master_block));
-    printf("Read first inode table block: %d\n");
+    printf("Read first inode table block: %d\n", masterblock->first_inode_table_block);
     return masterblock;
 }
 
@@ -278,6 +279,9 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
     write(fd, &masterblock, sizeof(master_block));
     printf("Masterblock written\n");
 
+    //insert space for bitmap
+    lseek(fd, (1 + masterblock.number_of_bitmap_blocks) * masterblock.block_size, SEEK_SET);
+
     //insert root inode
     inode root_inode;
     memset(&root_inode, 0, sizeof(inode));
@@ -285,7 +289,7 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
     root_inode.type = INODE_DIR;
     write(fd, &root_inode, sizeof(inode));
 
-    //allocate space
+    //allocate space for data
     lseek(fd, fs_size - 1, SEEK_SET);
     write(fd, "\0", 1);
     printf("Allocated %d bytes\n", fs_size);
@@ -296,7 +300,7 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
 
 int simplefs_openfs(char *path) { //Adam
     int fd = open(path, O_RDWR, 0644);
-    printf("OPEN FS. fd = %d\n" + fd);
+    printf("OPEN FS. fd = %d\n", fd);
     if(fd == -1) {
         return -1;
     }
@@ -399,7 +403,7 @@ int simplefs_creat(char *name, int mode, int fsfd) { //Adam
     unsigned long inode_no;
     inode * parent_node = _get_inode_by_path(path, masterblock, fsfd, &inode_no);
     printf("%d", inode_no);
-    printf("\n%c\n", parent_node->filename);
+    printf("\n%s\n", parent_node->filename);
 
     // pobranie bitmapy
     block_bitmap * block_bitmap_pointer = NULL;
