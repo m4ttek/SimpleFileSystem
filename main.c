@@ -3,28 +3,59 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 
-int main(void) {
-    //simplefs_init(NULL, 0, 0);
-    //simplefs_openfs(NULL);
-    //simplefs_closefs(0);
+void init_file_system(char * name) {
+    simplefs_init(name, 4096, 1024);
+}
 
-    //int fdfs = open("filesystem", O_RDWR, 0644);
-    //simplefs_init("filesystem", 4096, 1024);
-    int fdfs = simplefs_openfs("filesystem");
+int open_file_system(char * name) {
+    int fdfs = simplefs_openfs(name);
     if(fdfs == -1) {
         printf("Error opening filesystem\n");
         return 1;
     }
     printf("Opened filesystem. FD = %d\n", fdfs);
-    //int fd = simplefs_open(NULL, READ_MODE, fdfs);
-    //simplefs_lseek(fd, SEEK_CUR, 0, fdfs);
-    printf("Doing!\n");
+    return fdfs;
+}
 
-    simplefs_creat("/ada", 0, fdfs);
-    //simplefs_init("filesystem", 4096, 10);
-    //printf("%lu", sizeof(inode));
-    printf("Done!\n");
+void creat_file(char *filesystem, char *path) {
+
+    int fdfs = open_file_system(filesystem);
+    if(fdfs < -1) {
+        return;
+    }        
+
+
+    simplefs_creat(path, 0, fdfs);
+}
+
+/**
+ * Usage: -f file -i - create a filesystem with name 'file'
+ * Usage: -f file -o - open a filesystem 'file'
+ * Usage: -f file -c path - create a file with path 'path' in a filesystem 'file'
+ */
+int main(int argc, char ** argv) {
+    char *value = 0;
+    int option; 
+    while ((option = getopt (argc, argv, "f:ioc:")) != -1) {
+        switch(option) {
+            case 'f':
+                value = optarg;
+                break;
+            case 'i':
+                if(value != 0) {
+                    init_file_system(value);
+                }
+                break;
+            case 'o':
+                open_file_system(value);
+                break;
+            case 'c':
+                creat_file(value, optarg);
+                break;
+        }
+    }
     return 0;
 }
