@@ -151,11 +151,11 @@ block* _read_block(int fd, long block_no, long block_offset, long block_size) {
  * @return odczytany inode
  */
 inode* _get_root_inode(int fd, master_block* masterblock) {
-    printf("Seeking to %d\n", masterblock->first_inode_table_block * masterblock->block_size);
+    printf("Seeking to %lu\n", masterblock->first_inode_table_block * masterblock->block_size);
     lseek(fd, masterblock->first_inode_table_block * masterblock->block_size, SEEK_SET);
     inode* root_inode = malloc(sizeof(inode));
     read(fd, root_inode, sizeof(inode));
-    printf("Read root inode. Name is %s. Type is %c and first data block is %d\n", root_inode->filename, root_inode->type, root_inode->first_data_block);
+    printf("Read root inode. Name is %s. Type is %c and first data block is %lu\n", root_inode->filename, root_inode->type, root_inode->first_data_block);
     return root_inode;
 }
 
@@ -179,7 +179,7 @@ inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* 
                 long block_to_read = signature->inode_no / masterblock->block_size;
                 //zapameitujemy numer inode w tablicy inodow
                 *inode_no = signature->inode_no;
-                printf("%d", signature->inode_no);
+                printf("%lu", signature->inode_no);
                 block* inode_block = _read_block(fd, block_to_read, masterblock->first_inode_table_block, masterblock->block_size);
                 inode* result_inode = malloc(sizeof(inode));
                 memcpy(result_inode, inode_block, sizeof(inode) * (signature->inode_no % masterblock->block_size));
@@ -428,6 +428,7 @@ int simplefs_creat(char *name, int mode, int fsfd) { //Adam
     free(masterblock);
     free(path);
     free(file_name);
+    return -1;
 }
 
 int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
