@@ -293,16 +293,35 @@ int _find_free_blocks(int fsfd, initialized_structures * initialized_structures_
         // zapisanie numeru wolnego bloku do tablicy
         free_blocks[free_block_idx] = master_block->first_free_block_number;
 
+        // zmniejszenie liczby wolnych bloków
+        master_block->number_of_free_blocks--;
+
+        // następny blok jest pretendentem na wolny blok
+        master_block->first_free_block_number++;
+
         // wyszkanie następnego wolnego bloku, a w nim wolnego bitu
         while (TRUE) {
+            unsigned bytes_mask = (0xFFFF << (master_block->first_free_block_number - 1);
             // jeśli istnieje wolny bit w bitmapie
-            if ((*bitmap_byte) != 0xFFFF) {
-
-            } /*else if (()) {
-
-            }*/
+            if ((((*bitmap_byte) & bytes_mask) != bytes_mask) && master_block->first_free_block_number < master_block->number_of_blocks) {
+                char bitmap_byte_to_parse = (*bitmap_byte);
+                while (bitmap_byte_to_parse & (1 << master_block->first_free_block_number % sizeof(char))) {
+                    master_block->first_free_block_number++;
+                }
+                break;
+            } else if (master_block->first_free_block_number == saved_first_free_block_number) {
+                // nastąpił powrót do tego samego bloku
+                return NO_FREE_BLOCKS;
+            } else if (master_block->first_free_block_number >= master_block->number_of_blocks) {
+                // dotarcie do końca wszystkich bloków (pierwszy blok to plik .lock)
+                master_block->first_free_block_number = master_block->data_start_block + 1;
+                bitmap_byte = block_bitmap_pointer->bitmap + 1;
+            } else {
+                // przesuwamy się na następne miejsce w bitmapie (niewyrównane bloki zostaną pominięte)
+                bitmap_byte += sizeof(char);
+                master_block->first_free_block_number += 8;
+            }
         }
-        master_block->first_free_block_number = 123;
     }
 
     return 0;
@@ -391,7 +410,7 @@ void _save_buffer_to_file(initialized_structures * initialized_structures_pointe
     unsigned int additional_block_offset = real_file_offset % real_block_size;
     unsigned int data_offset = 0;
     for (block_to_start; block_to_start < number_of_all_blocks_be_written; number_of_all_blocks_be_written++) {
-        unsigned int block_number = blocks_table[block_to_start];
+        unsigned long block_number = blocks_table[block_to_start];
 
         unsigned long block_offset = _get_block_offset(master_block_pointer, block_number);
         lseek(params->fsfd, block_offset + additional_block_offset, SEEK_SET);
@@ -402,11 +421,15 @@ void _save_buffer_to_file(initialized_structures * initialized_structures_pointe
         additional_block_offset = 0;
         data_offset += data_length_for_block;
 
+        // przesunięcie wskaznika na koniec bloku dla zapisania informacji o następnym numerze bloku
+        lseek(params->fsfd, block_offset + real_block_size, SEEK_SET);
+
         // zapisanie wskaznika na następny numer bloku
         if (block_to_start != number_of_all_blocks_be_written - 1) {
-
+            write(params->fsfd, &block_number, sizeof(unsigned long));
         } else {
             // zapisanie zera jako następny numer bloku
+            write(params->fsfd, 0, sizeof(unsigned long));
         }
     }
 }
@@ -465,7 +488,12 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
         || file_inode->first_data_block == 0) {
         // wyszukanie nowych bloków danych
         unsigned int number_of_free_blocks = number_of_blocks_to_be_taken_by_file - number_of_all_taken_blocks_by_file;
-        _find_free_blocks(params.fsfd, initialized_structures_pointer, number_of_free_blocks, blocks_table + number_of_all_taken_blocks_by_file);
+        if (_find_free_blocks(params.fsfd, initialized_structures_pointer, number_of_free_blocks,
+                              blocks_table + number_of_all_taken_blocks_by_file) == -2) {
+            _unblock_first_free_block(params.fsfd, &flock_structure);
+            free(blocks_table);
+            return NO_FREE_BLOCKS;
+        }
     }
 
     unsigned long number_of_flocks = number_of_blocks_to_be_taken_by_file;
@@ -710,7 +738,9 @@ int simplefs_mkdir(char *name, int fsfd) { //Michal
     params.data = (char*) (&new_file_sig);
     params.data_length = sizeof(file_signature);
 
-    _write_unsafe(structures, params);
+    if (_write_unsafe(structures, params) == NO_FREE_BLOCKS) {
+        // TODO
+    }
 
     free(structures);
     simplefs_close(fd);
@@ -855,7 +885,9 @@ int simplefs_creat(char *name, int mode, int fsfd) { //Adam
         write_params_value.for_each_record = NULL;
         write_params_value.record_length = 0;
         write_params_value.additional_param = 0;
-        _write_unsafe(is, write_params_value);
+        if (_write_unsafe(is, write_params_value) == NO_FREE_BLOCKS) {
+            // TODO by ADAM
+        }
     } while( 0 );
     _unlock_lock_file(is->master_block_pointer, fsfd);
     _uninitilize_structures(is);
