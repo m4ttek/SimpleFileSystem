@@ -17,7 +17,6 @@
 #define SIMPLEFS_MAGIC_NUMBER 0x4A5B
 #define FILE_NAME_LENGTH (256 - 2 * sizeof(long) - 2 * sizeof(char))
 
-#define BLOCK_DATA_SIZE (masterblock->block_size - sizeof(long))
 #define INODES_IN_BLOCK masterblock->block_size / sizeof(inode)
 
 #define FIRST_FREE_INODE_OFFSET sizeof(master_block) - sizeof(int) - sizeof(long)
