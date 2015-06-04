@@ -474,6 +474,20 @@ unsigned long _insert_new_inode(inode* new_inode, master_block* masterblock, int
     return 0;
 }
 
+/**
+ * Funkcja sprawdzająca, czy nie istnieje plik o zadanej nazwie w sygnaturze pliku
+ * @param record
+ * @param record_length
+ * @param param - w tym przypadku nazwa pliku, który chcemy utworzyć
+ * @return 0, jeśli plik istnieje, 1, jeśli nie
+ */
+int _check_duplicate_file_names_in_block(void* record, int record_length, void* param) {
+    file_signature* file_sig = (file_signature*) record;
+    if(strcmp(file_sig->name, (char*) param) == 0) {
+        return 0;
+    }
+    return 1;
+}
 
 int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) { //Michał
 
@@ -609,6 +623,9 @@ int simplefs_mkdir(char *name, int fsfd) { //Michal
     params.lock_blocks = 1;
     params.data = (char*) (&new_file_sig);
     params.data_length = sizeof(file_signature);
+    params.for_each_record = _check_duplicate_file_names_in_block;
+    params.record_length = sizeof(file_signature);
+    params.additional_param = name;
 
     _write_unsafe(structures, params);
 
