@@ -242,6 +242,8 @@ typedef struct initialized_structures_t {
     master_block * master_block_pointer;
     block_bitmap * block_bitmap_pointer;
     inode * inode_table;
+    unsigned bitmap_delta;
+    unsigned inode_delta;
 } initialized_structures;
 
 #endif //_SIMPLEFS_H

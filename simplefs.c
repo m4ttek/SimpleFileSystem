@@ -108,22 +108,21 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
         return NULL;
     }
     if(check_magic_number(master_block_pointer) == -1) {
-        munmap(0, sizeof(master_block));
+        munmap(master_block_pointer, sizeof(master_block));
         close(fd);
         return NULL;
     }
-    master_block* mblock = _get_master_block(fd);
-    printf("Master block read without mmap. Block size is %d\n", mblock->block_size);
     printf("mmaped master block pointer. Block size is %d\n", master_block_pointer->block_size);
     // pobranie bitmapy
     block_bitmap * block_bitmap_pointer = NULL;
     unsigned int bitmaps_size = 0;
+    unsigned bitmap_delta;
     if (init_bitmaps != 0) {
         bitmaps_size = master_block_pointer->number_of_bitmap_blocks * master_block_pointer->block_size;
-        block_bitmap_pointer = (block_bitmap *) mmap(NULL, bitmaps_size,
-                                                     PROT_READ | PROT_WRITE, MAP_SHARED, fd, master_block_pointer->block_size);
+        block_bitmap_pointer = (block_bitmap *) mmap_enhanced(NULL, bitmaps_size,
+                                                     PROT_READ | PROT_WRITE, MAP_SHARED, fd, master_block_pointer->block_size, &bitmap_delta);
         if (block_bitmap_pointer == MAP_FAILED) {
-            munmap(0, sizeof(master_block));
+            munmap(master_block_pointer, sizeof(master_block));
             close(fd);
             return NULL;
         }
@@ -131,22 +130,23 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
 
     // inicjalizacja tablicy inodów
     unsigned int inodes_size = master_block_pointer->number_of_inode_table_blocks * master_block_pointer->block_size;
-    inode * inodes_table = (inode *) mmap( NULL, inodes_size,
-                       PROT_READ | PROT_WRITE, MAP_SHARED, fd, 1 * master_block_pointer->block_size + bitmaps_size);
+    unsigned inode_delta;
+    inode * inodes_table = (inode *) mmap_enhanced( NULL, inodes_size,
+                       PROT_READ | PROT_WRITE, MAP_SHARED, fd, 1 * master_block_pointer->block_size + bitmaps_size, &inode_delta);
     if (inodes_table == MAP_FAILED) {
         perror("mmap");
         printf("Failed params: size = %d, fd = %d, offset = %d\n", inodes_size, fd, 1*master_block_pointer->block_size + bitmaps_size);
-        munmap(0, sizeof(master_block) + bitmaps_size);
+        munmap(master_block_pointer, sizeof(master_block));
+        munmap_enhanced(block_bitmap_pointer, bitmaps_size, bitmap_delta);
         close(fd);
         return NULL;
-    } else {
-        printf("Mmapped! size = %d, offset = %d at 0x%X\n", inodes_size,
-                (1 * master_block_pointer->block_size + bitmaps_size) & ~(sysconf(_SC_PAGE_SIZE) - 1));
     }
 
     initialized_structures_pointer->master_block_pointer = master_block_pointer;
     initialized_structures_pointer->block_bitmap_pointer = block_bitmap_pointer;
     initialized_structures_pointer->inode_table = inodes_table;
+    initialized_structures_pointer->bitmap_delta = bitmap_delta;
+    initialized_structures_pointer->inode_delta = inode_delta;
     return initialized_structures_pointer;
 }
 
@@ -155,10 +155,21 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
  * Powinna być wywowałana zawsze po zakończeniu pracy nad strukturami zwróconymi przez funkcję {_initialize_structures}
  */
 void _uninitilize_structures(initialized_structures * initialized_structures_pointer) {
+    printf("Uninitializing structs");
+    master_block* mb = initialized_structures_pointer->master_block_pointer;
+    int result = munmap_enhanced(initialized_structures_pointer->block_bitmap_pointer,
+            mb->number_of_bitmap_blocks * mb->block_size, initialized_structures_pointer->bitmap_delta);
+    printf("Munmap result: %d", result);
+    result = munmap_enhanced(initialized_structures_pointer->inode_table,
+            mb->number_of_inode_table_blocks * mb->block_size, initialized_structures_pointer->inode_delta);
+    printf("Munmap result: %d", result);
+    result = munmap(initialized_structures_pointer->master_block_pointer, sizeof(master_block));
+    printf("Munmap result: %d", result);
+    /*munmap(initialized_structures_pointer->master_block_pointer, sizeof(master_block));
     int result = munmap(initialized_structures_pointer, initialized_structures_pointer->master_block_pointer->block_size *
                    (1 + initialized_structures_pointer->master_block_pointer->number_of_bitmap_blocks
-                    + initialized_structures_pointer->master_block_pointer->number_of_inode_table_blocks));
-    printf("Munmap result: %d", result);
+                    + initialized_structures_pointer->master_block_pointer->number_of_inode_table_blocks));*/
+    //printf("Munmap result: %d", result);
 }
 
 /**
@@ -303,13 +314,16 @@ int _find_free_blocks(int fsfd, initialized_structures * initialized_structures_
     master_block * master_block = initialized_structures_pointer->master_block_pointer;
     unsigned long first_free_block_number = master_block->first_free_block_number;
     block_bitmap * block_bitmap_pointer = initialized_structures_pointer->block_bitmap_pointer;
+    printf("block bitmap pointer = %X\n", block_bitmap_pointer);
 
     // wolny blok zapisany na wypadek, gdyby poszukiwanie wolnych bloków nie mogło się poprawnie zakończyć (brakuje miejsca)
     unsigned long saved_first_free_block_number = first_free_block_number;
     unsigned long free_block_idx = 0;
     for (free_block_idx; free_block_idx < number_of_free_blocks; free_block_idx++) {
         // zaznaczenie bloku jako zajętego
+        printf("bitmap pointer %d\n", block_bitmap_pointer->bitmap);
         char * bitmap_byte = block_bitmap_pointer->bitmap + ((master_block->first_free_block_number / 8) * sizeof(char));
+        printf("bitmap byte evaluates to %d\n", block_bitmap_pointer->bitmap);
         unsigned int bit_in_byte = master_block->first_free_block_number % sizeof(char);
         (*bitmap_byte) |= (1 << bit_in_byte);
 
@@ -324,7 +338,7 @@ int _find_free_blocks(int fsfd, initialized_structures * initialized_structures_
 
         // wyszkanie następnego wolnego bloku, a w nim wolnego bitu
         while (TRUE) {
-            unsigned bytes_mask = (0xFFFF << (master_block->first_free_block_number - 1);
+            unsigned bytes_mask = (0xFFFF << (master_block->first_free_block_number - 1));
             // jeśli istnieje wolny bit w bitmapie
             if ((((*bitmap_byte) & bytes_mask) != bytes_mask) && master_block->first_free_block_number < master_block->number_of_blocks) {
                 char bitmap_byte_to_parse = (*bitmap_byte);
@@ -914,7 +928,7 @@ int _create_file_or_dir(char *name, int mode, int fsfd, int is_dir) {
     printf("%s\n", path);
     printf("%s\n", file_name);
     //blokujemy plik .lock
-    initialized_structures * is = _initialize_structures(fsfd, 0);
+    initialized_structures * is = _initialize_structures(fsfd, 1);
     printf("masterblock pointer: %d\n", is->master_block_pointer);
     inode * parent_node;
     printf("Przed seg fault: is = %d\n", is);
