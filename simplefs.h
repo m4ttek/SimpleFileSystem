@@ -18,6 +18,9 @@
 #define FILE_NAME_LENGTH (256 - 2 * sizeof(long) - 2 * sizeof(char))
 
 #define BLOCK_DATA_SIZE (masterblock->block_size - sizeof(long))
+#define INODES_IN_BLOCK masterblock->block_size / sizeof(inode)
+
+#define FIRST_FREE_INODE_OFFSET sizeof(master_block) - sizeof(int) - sizeof(long)
 
 /**
  * Tworzy system plików pod zadaną ścieżkę
@@ -33,6 +36,7 @@ int simplefs_init(char *path, unsigned block_size, unsigned number_of_blocks);
 #define HOST_FILE_ACCESS_ERROR -1
 #define BLOCK_SIZE_TOO_SMALL -2
 #define NUMBER_OF_BLOCKS_ZERO -3
+#define WRONG_BLOCK_SIZE -4
 
 /**
  * Otwiera plik zawierający system plików spod zadanej ścieżki
@@ -159,6 +163,7 @@ int simplefs_lseek(int fd, int whence, int offset, int fsfd);
 
 #define INODE_DIR 'D'
 #define INODE_FILE 'F'
+#define INODE_EMPTY 'E'
 
 /**
  * Struktura metryczki dla pliku na dysku.
@@ -183,6 +188,7 @@ typedef struct master_block_t {
     unsigned long number_of_bitmap_blocks;        // ilość bloków bitmapowych
     unsigned long number_of_inode_table_blocks;
     unsigned long first_inode_table_block;
+    unsigned long first_free_inode;
     unsigned int magic_number;
     /* TODO struct inode root_node; */
 } master_block;

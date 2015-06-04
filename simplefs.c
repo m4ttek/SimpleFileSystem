@@ -44,6 +44,7 @@ master_block get_initial_master_block(unsigned block_size, unsigned number_of_bl
     masterblock.number_of_inode_table_blocks = ceil((double) number_of_blocks / floor((double) block_size / sizeof(inode)));
     masterblock.data_start_block = 1 + masterblock.number_of_bitmap_blocks + masterblock.number_of_inode_table_blocks;
     masterblock.first_inode_table_block = 1 + masterblock.number_of_bitmap_blocks;
+    masterblock.first_free_inode = 2; // 0 - root inode, 1 - .lock
     masterblock.magic_number = SIMPLEFS_MAGIC_NUMBER;
     return masterblock;
 }
@@ -139,11 +140,11 @@ void _uninitilize_structures(initialized_structures * initialized_structures_poi
  * Funkcja czytająca z dysku blok określony numerem bloku z offsetem
  * @return odczytany blok
  */
-block* _read_block(int fd, long block_no, long block_offset, long block_size) {
-    block* blockRead = malloc(sizeof(block));
+void* _read_block(int fd, long block_no, long block_offset, long block_size) {
+    void* block_read = malloc(sizeof(block));
     lseek(fd, block_offset * block_size, SEEK_SET);
-    read(fd, blockRead, sizeof(block));
-    return blockRead;
+    read(fd, block_read, sizeof(block));
+    return block_read;
 }
 
 /**
@@ -248,6 +249,7 @@ master_block* _get_master_block(int fd) {
     master_block* masterblock = malloc(sizeof(master_block));
     read(fd, masterblock, sizeof(master_block));
     printf("Read first inode table block: %d\n", masterblock->first_inode_table_block);
+    printf("Sizeof block_size is %d\n", sizeof(masterblock->block_size));
     return masterblock;
 }
 
@@ -268,10 +270,56 @@ char* _get_path_for_new_file(char* full_path) {
     return NULL;
 }
 
+/**
+ * Funkcja umieszczająca bezpiecznie inode w pierwszym wolnym miejscu
+ * @return numer umieszczonego inode'u
+ */
+unsigned long _insert_new_inode(inode* new_inode, master_block* masterblock, int fd) {
+    struct flock lock;
+    lock.l_type = F_RDLCK + F_WRLCK;
+    lock.l_whence = SEEK_SET;
+    lock.l_start = FIRST_FREE_INODE_OFFSET;
+    lock.l_len = sizeof(masterblock->first_free_inode);
+    lock.l_pid = getpid();
+
+    //lock first free inode in master block
+    fcntl(fd, F_SETLKW, &lock);
+    master_block* current_mb = _get_master_block(fd);
+    unsigned long inode_no = current_mb->first_free_inode;
+    lseek(fd, (masterblock->first_inode_table_block) * masterblock->block_size + masterblock->first_free_inode * sizeof(inode), SEEK_SET);
+    write(fd, new_inode, sizeof(inode));
+    //now need to find new next free inode
+    int block_no = inode_no/INODES_IN_BLOCK;
+    while(block_no < masterblock->data_start_block) {
+        inode* inodes_in_block = (inode*) _read_block(fd, block_no, current_mb->first_inode_table_block, current_mb->block_size);
+        int i;
+        for(i = 0; i < masterblock->block_size / sizeof(inode); i++) {
+            if(inodes_in_block[i].type == 'E') {
+                lseek(fd, FIRST_FREE_INODE_OFFSET, SEEK_SET);
+                unsigned long new_first_inode_no = block_no * INODES_IN_BLOCK;
+                write(fd, &new_first_inode_no, sizeof(unsigned long));
+                //unlock
+                lock.l_type = F_UNLCK;
+                fcntl(fd, F_SETLK, &lock);
+                return inode_no;
+            }
+        }
+    }
+    //no free inodes!
+    //unlock
+    lock.l_type = F_UNLCK;
+    fcntl(fd, F_SETLK, &lock);
+    return 0;
+}
+
+
 int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) { //Michał
 
     if(block_size < 1024) {
         return BLOCK_SIZE_TOO_SMALL;
+    }
+    if(block_size % sizeof(inode) != 0) {
+        return WRONG_BLOCK_SIZE;
     }
 
     if(number_of_blocks == 0) {
@@ -376,6 +424,17 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
 int simplefs_mkdir(char *name, int fsfd) { //Michal
     //separate new dir name from the path
     char* path = _get_path_for_new_file(name);
+    master_block* masterblock = _get_master_block(fsfd);
+    int inode_no;
+    inode* dir_inode = _get_inode_by_path(path, masterblock, fsfd, &inode_no);
+
+    write_params params;
+    params.fd = fsfd;
+    params.target_inode = dir_inode;
+    params.file_offset = -1;
+    params.lock_blocks = 1;
+    //params.data =
+
 
     /*master_block* masterblock = _get_master_block(fsfd);
     inode* dir_inode = _get_inode_by_path(path, masterblock, fsfd, NULL);
