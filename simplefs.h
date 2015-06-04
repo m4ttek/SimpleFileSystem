@@ -100,6 +100,15 @@ int simplefs_mkdir (char *name, int fsfd);
 #define NAME_ALREADY_IN_USE -2
 
 /**
+ * Funkcja zamykająca otwarty plik w systemie plików simple fs
+ * @param fd - deskryptor pliku simple_fs
+ * @return 0 lub kod błędu
+ */
+int simplefs_close(int fd);
+
+#define UNKNOWN_DESCRIPTOR -1
+
+/**
  * Tworzy plik o podanej nazwie (razem ze ścieżką oraz trybie praw, zapis/odczyt)
  * @param name - nazwa pliku wraz ze ścieżką
  * @param mode - tryb
@@ -174,7 +183,6 @@ int simplefs_lseek(int fd, int whence, int offset, int fsfd);
 typedef struct inode_t {
     char filename[FILE_NAME_LENGTH];
     char type;
-    char mode; /* tryb dostepu */
     unsigned long size;
     unsigned long first_data_block;
 } inode;
@@ -227,6 +235,7 @@ typedef struct file_t {
     int fd;
     unsigned long position;
     unsigned long inode_no;
+    char mode; /* tryb dostepu */
     UT_hash_handle hh; //makes the struct hashable
 } file;
 
