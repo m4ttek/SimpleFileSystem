@@ -5,7 +5,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-
 void init_file_system(char * name) {
     simplefs_init(name, 4096, 1024);
 }
@@ -25,7 +24,7 @@ void creat_file(char *filesystem, char *path) {
     int fdfs = open_file_system(filesystem);
     if(fdfs < -1) {
         return;
-    }        
+    }
 
 
     simplefs_creat(path, 0, fdfs);
@@ -38,7 +37,7 @@ void creat_file(char *filesystem, char *path) {
  */
 int main(int argc, char ** argv) {
     char *value = 0;
-    int option; 
+    int option;
     while ((option = getopt (argc, argv, "f:ioc:")) != -1) {
         switch(option) {
             case 'f':

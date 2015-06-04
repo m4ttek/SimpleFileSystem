@@ -143,6 +143,9 @@ int simplefs_write(int fd, char *buf, int len, int fsfd);
 //Zwracane
 #define OK 0
 #define CANNOT_EXTEND_FILE -1
+#define WRONG_MODE -2
+#define NOT_FILE_FD -3
+#define FD_NOT_FOUND -4
 
 /**
  * Przesuwa pozycję o podany offset w pliku, pod warunkami określonymi przez whence
@@ -222,7 +225,8 @@ typedef struct file_signature_t {
  */
 typedef struct file_t {
     int fd;
-    long position;
+    unsigned long position;
+    unsigned long inode_no;
     UT_hash_handle hh; //makes the struct hashable
 } file;
 

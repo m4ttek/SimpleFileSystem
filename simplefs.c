@@ -22,10 +22,10 @@ pthread_mutex_t open_files_write_mutex = PTHREAD_MUTEX_INITIALIZER;
  */
 
 typedef struct write_params_t {
+    int fsfd;               // deskryptor systemu plików
     int fd;                 // deskryptor pliku
-    inode* target_inode;    // pod jakim inodem należy zapisać
     char* data;             // dane do zapisu
-    int data_length;        // długość danych
+    unsigned int data_length;        // długość danych
     int lock_blocks;        // czy mają być zablokowane bloki (czyli co właściwie?)
     long file_offset;       // offset w pisanym pliku
 } write_params;
@@ -81,7 +81,6 @@ int check_magic_number(master_block * mb) {
  */
 initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
     initialized_structures * initialized_structures_pointer = malloc(sizeof(initialized_structures));
-    printf("wchodze");
     // zamapowanie master blocka
     master_block * master_block_pointer
             = (master_block *) mmap(NULL, sizeof(master_block), PROT_READ, MAP_SHARED, fd, 0);
@@ -142,7 +141,7 @@ void _uninitilize_structures(initialized_structures * initialized_structures_poi
  */
 void* _read_block(int fd, long block_no, long block_offset, long block_size) {
     void* block_read = malloc(sizeof(block));
-    lseek(fd, block_offset * block_size, SEEK_SET);
+    lseek(fd, (block_no + block_offset) * block_size, SEEK_SET);
     read(fd, block_read, sizeof(block));
     return block_read;
 }
@@ -235,7 +234,167 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
     return current_inode;
 }
 
-int _write_unsafe(write_params params) {
+/**
+ * Blokuje first free block (ekskluzywnie).
+ *
+ * @param fd deksryptor systemu plików
+ * @param fl niewypełniona struktura flock
+ */
+int _block_first_free_block(int fd, struct flock * fl) {
+    /* F_RDLCK, F_WRLCK, F_UNLCK    */
+    fl->l_type = F_WRLCK;
+    /* SEEK_SET, SEEK_CUR, SEEK_END */
+    fl->l_whence = SEEK_SET;
+    fl->l_start = 32;
+    fl->l_len = 8;
+    fl->l_pid = getpid();
+    return fcntl(fd, F_SETLKW, fl);
+}
+
+/**
+ * Odblokowuje first free block (ekskluzywnie).
+ *
+ * @param fd deksryptor systemu plików
+ * @param fl niewypełniona struktura flock
+ */
+int _unblock_first_free_block(int fd, struct flock * fl) {
+    fl->l_type = F_UNLCK;
+    return fcntl(fd, F_SETLK, fl);
+}
+
+/**
+ * Wyszukuje dostępne wolne bloki, nie jest cross-process-safe.
+ *
+ * @param initialized_structures_pointer wskaźnik na zainicjalizowane struktury systemu plików
+ * @param number_of_free_blocks liczba wolnych bloków do wyszukania
+ * @param free_blocks tablica, gdzie zostaną zapisane identyfikatory znalezionych bloków
+ */
+int _find_free_blocks(initialized_structures * initialized_structures_pointer, unsigned long number_of_free_blocks,
+                      unsigned long * free_blocks) {
+    master_block * master_block = initialized_structures_pointer->master_block_pointer;
+    unsigned long first_free_block_number = master_block->first_free_block_number;
+    block_bitmap * block_bitmap_pointer = initialized_structures_pointer->block_bitmap_pointer;
+
+    return 0;
+}
+
+/**
+ * Pobiera strukturę pliku na podstawie podanego identyfikatora pliku.
+ */
+file * _get_file_by_fd(int fd) {
+    file* file_found;
+    HASH_FIND_INT( open_files, &fd, file_found);
+    return file_found;
+}
+
+/**
+ * Ładuje i-node dla podanej struktury pliku.
+ */
+inode * _load_inode_from_file_structure(initialized_structures * initialized_structures_pointer, file * file_pointer) {
+    if (file_pointer == NULL) {
+        return NULL;
+    }
+    return initialized_structures_pointer->inode_table + (sizeof(inode) * file_pointer->inode_no);
+}
+
+void _get_blocks_numbers_taken_by_file(int fsfd, unsigned int first_block_no, master_block * master_block_pointer, unsigned int * blocks_table) {
+    int i = 0;
+    blocks_table[i++] = first_block_no;
+    block * block_pointer = _read_block(fsfd, first_block_no, master_block_pointer->data_start_block, master_block_pointer->block_size);
+    while (block_pointer->next_data_block != 0) {
+        block_pointer = _read_block(fsfd, block_pointer->next_data_block, master_block_pointer->data_start_block, master_block_pointer->block_size);
+        blocks_table[i++] = block_pointer->next_data_block;
+    }
+}
+
+void _lock_file_blocks(int fsfd, unsigned int * blocks_table) {
+
+}
+
+void _unlock_file_blocks(int fsfd, unsigned int * blocks_table) {
+
+}
+
+/**
+ * Podstawowa funkcja zapisująca podany blok danych do wskazanego pliku.
+ * W normalnym przypadku pozwala na równoległy zapis wielu procesów, podanie file_offset < 0 powoduje dodatkowe
+ * zablokowanie bloków danych, do których ta funkcja pisze (czyli robi append, przydatne w przypadku katalogów).
+ * Na początku działania funkcji blokowany jest first free node w strukturze master block, tak aby możliwe było
+ * poprawne przydzielenie wymaganych bloków dla funkcji. Po znalezieniu takich bloków i zmianie w strukturze bitmapy
+ * następuje odblokowanie first free node.
+ */
+int _write_unsafe(initialized_structures * initialized_structures_pointer, write_params params) {
+    struct flock flock_structure;
+    // blokada first free block
+    _block_first_free_block(params.fsfd, &flock_structure);
+
+    master_block * master_block_pointer = initialized_structures_pointer->master_block_pointer;
+    unsigned int real_block_size = master_block_pointer->block_size - 8;
+
+    // załadowanie odpowiedniej struktury inode
+    file * file_structure = _get_file_by_fd(params.fd);
+    inode * file_inode = _load_inode_from_file_structure(initialized_structures_pointer, file_structure);
+    unsigned long file_size = file_inode->size;
+
+    // sprawdzenie poprawności dostępu do pliku
+    if (file_inode->mode == READ_MODE) {
+        _unblock_first_free_block(params.fsfd, &flock_structure);
+        return WRONG_MODE;
+    }
+
+    // wyznaczenie prawdziwego offsetu dla pliku (< 0 => append)
+    unsigned int real_file_offset = 0;
+    if (params.file_offset < 0) {
+        real_file_offset = file_size;
+    } else {
+        real_file_offset = (unsigned int) params.file_offset;
+    }
+
+    // wyznaczenie ile aktualnie zajmuje plik, a ile może zajmować po operacji zapisu
+    unsigned int number_of_all_taken_blocks_by_file = ceil((double) file_size / real_block_size);
+    unsigned int number_of_blocks_to_be_taken_by_file =
+            ceil(((double)real_file_offset + (double) params.data_length) / real_block_size);
+    // przypadek specjalny - pierwszy zapis do nowo utworzonego pliku
+    if (number_of_blocks_to_be_taken_by_file == 0) {
+        number_of_blocks_to_be_taken_by_file = 1;
+    }
+    unsigned int * blocks_table = NULL;
+    if (number_of_all_taken_blocks_by_file >= number_of_blocks_to_be_taken_by_file) {
+        blocks_table = (unsigned int *) malloc(sizeof(unsigned int) * number_of_all_taken_blocks_by_file);
+    } else {
+        blocks_table = (unsigned int *) malloc(sizeof(unsigned int) * number_of_blocks_to_be_taken_by_file);
+    }
+    // czy trzeba wyszukać nowe bloki danych dla pliku
+    if ((number_of_blocks_to_be_taken_by_file > number_of_all_taken_blocks_by_file)
+        || file_inode->first_data_block == 0) {
+        // wyszukanie nowych bloków danych
+        unsigned int number_of_free_blocks = number_of_blocks_to_be_taken_by_file - number_of_all_taken_blocks_by_file;
+        _find_free_blocks(initialized_structures_pointer, number_of_free_blocks, blocks_table + number_of_all_taken_blocks_by_file);
+    }
+
+    // czy zablokować dodatkowo wszystkie bloki danych, do których funkcja będzie zapisywać dane
+    if (params.lock_blocks) {
+        _get_blocks_numbers_taken_by_file(params.fsfd, file_inode->first_data_block, master_block_pointer, blocks_table);
+        _lock_file_blocks(params.fsfd, blocks_table);
+    }
+
+    // zapis nowej długości pliku
+    if (file_size >= real_file_offset + (unsigned long)params.data_length) {
+        file_inode->size = file_size;
+    } else {
+        file_inode->size = real_file_offset + (unsigned long)params.data_length;
+    }
+
+    // odblokowanie first free node
+    _unblock_first_free_block(params.fsfd, &flock_structure);
+
+    // operacja zapisu do pliku
+
+    // odblokowanie zablokowanych bloków danych (jeśli było to żądane)
+    if (params.lock_blocks) {
+        _unlock_file_blocks(params.fsfd, blocks_table);
+    }
+    free(blocks_table);
     return 0;
 }
 
@@ -411,6 +570,7 @@ int simplefs_open(char *name, int mode, int fsfd) { //Michal
     file* new_file = malloc(sizeof(file));
     new_file->fd = i;
     new_file->position = 0;
+    new_file->inode_no = tmp;
     HASH_ADD_INT(open_files, fd, new_file);
     pthread_mutex_unlock(&open_files_write_mutex);
     free(masterblock);
@@ -430,7 +590,6 @@ int simplefs_mkdir(char *name, int fsfd) { //Michal
 
     write_params params;
     params.fd = fsfd;
-    params.target_inode = dir_inode;
     params.file_offset = -1;
     params.lock_blocks = 1;
     //params.data =
@@ -453,6 +612,8 @@ int simplefs_mkdir(char *name, int fsfd) { //Michal
     }*/
     return -1;
 }
+
+
 
 int simplefs_creat(char *name, int mode, int fsfd) { //Adam
     int full_path_lenght = strlen(name);
@@ -495,7 +656,25 @@ int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
 }
 
 int simplefs_write(int fd, char *buf, int len, int fsfd) { //Mateusz
-    return -1;
+    initialized_structures * initialized_structures_pointer = _initialize_structures(fsfd, 1);
+    if (initialized_structures_pointer != NULL) {
+        printf("Blad");
+        return -1;
+    }
+    file * file_pointer = _get_file_by_fd(fd);
+    if (file_pointer == NULL) {
+        return FD_NOT_FOUND;
+    }
+    write_params write_params_structure;
+    write_params_structure.data_length = len;
+    write_params_structure.data = buf;
+    write_params_structure.fsfd = fsfd;
+    write_params_structure.fd = fd;
+    write_params_structure.lock_blocks = 0;
+    write_params_structure.file_offset = file_pointer->position;
+    int result = _write_unsafe(initialized_structures_pointer, write_params_structure);
+    _uninitilize_structures(initialized_structures_pointer);
+    return result;
 }
 
 int simplefs_lseek(int fd, int whence, int offset, int fsfd) { //Mateusz
@@ -504,21 +683,25 @@ int simplefs_lseek(int fd, int whence, int offset, int fsfd) { //Mateusz
         printf("Blad");
         return -1;
     }
-    //_print_masterblock_info(initialized_structures_pointer->master_block_pointer);
+    file * file_pointer =_get_file_by_fd(fd);
+    if (file_pointer == NULL) {
+        return FD_NOT_FOUND;
+    }
     int effective_offset = 0;
     switch(whence) {
         case SEEK_SET:
             effective_offset = offset;
             break;
         case SEEK_CUR:
-            effective_offset = 1;
+            effective_offset = file_pointer->position + offset;
             break;
         case SEEK_END:
+            effective_offset = _load_inode_from_file_structure(initialized_structures_pointer, file_pointer)->size + offset;
             break;
         default:
             return - 1;
     }
-
-    //_uninitilize_structures(initialized_structures_pointer);
+    file_pointer->position = effective_offset;
+    _uninitilize_structures(initialized_structures_pointer);
     return 0;
 }
