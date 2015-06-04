@@ -29,9 +29,21 @@ typedef struct write_params_t {
     int lock_blocks;        // czy mają być zablokowane bloki (czyli co właściwie?)
     long file_offset;       // offset w pisanym pliku (-1 = append)
     int (*for_each_record)(void*, int, void*);
-    int record_length;
     void* additional_param;
 } write_params;
+
+/**
+ * Funkcja opakowująca dla mmap, która radzi sobie z alignem stron i zwraca właściwy wskaźnik
+ */
+void *mmap_enhanced(void *addr, size_t length, int prot, int flags, int fd, off_t offset, unsigned* delta) {
+    off_t legal_offset = offset & ~(sysconf(_SC_PAGE_SIZE) - 1);
+    *delta = offset - legal_offset;
+    return mmap(addr, length + *delta, prot, flags, fd, legal_offset) + *delta;
+}
+
+int munmap_enhanced(void *addr, size_t length, unsigned delta) {
+    return munmap(addr - delta, length);
+}
 
 /**
  * Funkcja zwracająca docelowy rozmiar systemu plików na podstawie rozmiaru bloku i pożądanej liczby bloków danych
@@ -39,6 +51,7 @@ typedef struct write_params_t {
  */
 master_block get_initial_master_block(unsigned block_size, unsigned number_of_blocks) {
     master_block masterblock;
+    printf("Setting block size to %d\n", block_size);
     masterblock.block_size = block_size;
     masterblock.number_of_blocks = number_of_blocks;
     masterblock.number_of_free_blocks = number_of_blocks;
@@ -73,6 +86,8 @@ int check_magic_number(master_block * mb) {
     return 0;
 }
 
+master_block* _get_master_block(int fd);
+
 /**
  * Funkcja inicjalizująca główne struktury systemu plików - master block, i-nodes, oraz jeśli wymagane - bitmap.
  * Sprawdza czy wczytany plik jest rzeczywiście systemem plików (przy użyciu magic number), w p.p. zwraca NULL.
@@ -96,7 +111,9 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
         close(fd);
         return NULL;
     }
-
+    master_block* mblock = _get_master_block(fd);
+    printf("Master block read without mmap. Block size is %d\n", mblock->block_size);
+    printf("mmaped master block pointer. Block size is %d\n", master_block_pointer->block_size);
     // pobranie bitmapy
     block_bitmap * block_bitmap_pointer = NULL;
     unsigned int bitmaps_size = 0;
@@ -113,12 +130,18 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
 
     // inicjalizacja tablicy inodów
     unsigned int inodes_size = master_block_pointer->number_of_inode_table_blocks * master_block_pointer->block_size;
-    inode * inodes_table = (inode *) mmap( (void *) sizeof(master_block) + bitmaps_size, inodes_size,
-                       PROT_READ | PROT_WRITE, MAP_SHARED, fd, 1 * master_block_pointer->block_size + bitmaps_size);
+    inode * inodes_table = (inode *) mmap( /*(void *) sizeof(master_block) + bitmaps_size*/NULL, inodes_size,
+                       PROT_READ | PROT_WRITE, MAP_SHARED, fd,
+                       (1 * master_block_pointer->block_size + bitmaps_size) & ~(sysconf(_SC_PAGE_SIZE) - 1));
     if (inodes_table == MAP_FAILED) {
+        perror("mmap");
+        printf("Failed params: size = %d, fd = %d, offset = %d\n", inodes_size, fd, 1*master_block_pointer->block_size + bitmaps_size);
         munmap(0, sizeof(master_block) + bitmaps_size);
         close(fd);
         return NULL;
+    } else {
+        printf("Mmapped! size = %d, offset = %d at 0x%X\n", inodes_size,
+                (1 * master_block_pointer->block_size + bitmaps_size) & ~(sysconf(_SC_PAGE_SIZE) - 1));
     }
 
     initialized_structures_pointer->master_block_pointer = master_block_pointer;
@@ -155,6 +178,7 @@ void* _read_block(int fd, long block_no, long block_offset, long block_size) {
  */
 inode* _get_root_inode(int fd, master_block* masterblock) {
     printf("Seeking to %lu\n", masterblock->first_inode_table_block * masterblock->block_size);
+    printf("first inode table block is %d and block size is %d\n", masterblock->first_inode_table_block, masterblock->block_size);
     lseek(fd, masterblock->first_inode_table_block * masterblock->block_size, SEEK_SET);
     inode* root_inode = malloc(sizeof(inode));
     read(fd, root_inode, sizeof(inode));
@@ -168,6 +192,7 @@ inode* _get_root_inode(int fd, master_block* masterblock) {
  */
 inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* masterblock, unsigned long* inode_no) {
     printf("_get_inode_in_dir %c", parent_inode->type);
+
     if(parent_inode->type != INODE_DIR) {
         return NULL;
     }
@@ -211,6 +236,7 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
     if(strlen(path) == 1) {
         //root inode
         *inode_no = 0;
+        printf("In _get_inode_by_path - get root inode. Block size is %d\n", masterblock->block_size);
         return _get_root_inode(fd, masterblock);
     }
     unsigned path_index = 1;
@@ -436,22 +462,36 @@ char* _get_path_for_new_file(char* full_path) {
  * Funkcja umieszczająca bezpiecznie inode w pierwszym wolnym miejscu
  * @return numer umieszczonego inode'u
  */
-unsigned long _insert_new_inode(inode* new_inode, master_block* masterblock, int fd) {
+unsigned long _insert_new_inode(inode* new_inode, initialized_structures* structures, int fd) {
     struct flock lock;
     lock.l_type = F_RDLCK + F_WRLCK;
     lock.l_whence = SEEK_SET;
     lock.l_start = FIRST_FREE_INODE_OFFSET;
-    lock.l_len = sizeof(masterblock->first_free_inode);
+    lock.l_len = sizeof(structures->master_block_pointer->first_free_inode);
     lock.l_pid = getpid();
-
+printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_pointer);
     //lock first free inode in master block
     fcntl(fd, F_SETLKW, &lock);
-    master_block* current_mb = _get_master_block(fd);
-    unsigned long inode_no = current_mb->first_free_inode;
-    lseek(fd, (masterblock->first_inode_table_block) * masterblock->block_size + masterblock->first_free_inode * sizeof(inode), SEEK_SET);
-    write(fd, new_inode, sizeof(inode));
+    printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_pointer);
+    unsigned long inode_no = structures->master_block_pointer->first_free_inode;
+    structures->inode_table[inode_no] = *new_inode;
     //now need to find new next free inode
-    int block_no = inode_no/INODES_IN_BLOCK;
+    unsigned long i;
+    for(i = inode_no + 1; i < (structures->master_block_pointer->number_of_inode_table_blocks * structures->master_block_pointer->block_size)
+            / sizeof(inode); i++) {
+        if(structures->inode_table[i].type == 'E') {
+            structures->master_block_pointer->first_free_inode = i;
+            lock.l_type = F_UNLCK;
+            fcntl(fd, F_SETLK, &lock);
+            return inode_no;
+        }
+    }
+    //no free inodes!
+    //unlock
+    lock.l_type = F_UNLCK;
+    fcntl(fd, F_SETLK, &lock);
+    return 0;
+    /*int block_no = inode_no/INODES_IN_BLOCK;
     while(block_no < masterblock->data_start_block) {
         inode* inodes_in_block = (inode*) _read_block(fd, block_no, current_mb->first_inode_table_block, current_mb->block_size);
         int i;
@@ -471,22 +511,26 @@ unsigned long _insert_new_inode(inode* new_inode, master_block* masterblock, int
     //unlock
     lock.l_type = F_UNLCK;
     fcntl(fd, F_SETLK, &lock);
-    return 0;
+    return 0;*/
 }
 
 /**
- * Funkcja sprawdzająca, czy nie istnieje plik o zadanej nazwie w sygnaturze pliku
- * @param record
- * @param record_length
- * @param param - w tym przypadku nazwa pliku, który chcemy utworzyć
+ * Funkcja sprawdzająca, czy nie istnieje plik o zadanej nazwie w danym bloku
+ * @param data_block blok danych
+ * @param block_size rozmiar bloku
+ * @param name - nazwa pliku, który chcemy utworzyć
  * @return 0, jeśli plik istnieje, 1, jeśli nie
  */
-int _check_duplicate_file_names_in_block(void* record, int record_length, void* param) {
-    file_signature* file_sig = (file_signature*) record;
-    if(strcmp(file_sig->name, (char*) param) == 0) {
-        return 0;
+int _check_duplicate_file_names_in_block(block* data_block, int block_size, void* name) {
+    file_signature** signatures = (file_signature**) data_block->data;
+    int i;
+    for(i = 0; i < block_size / sizeof(file_signature); i++) {
+        if(signatures[i]->inode_no != 0 && strcmp(signatures[i]->name, (char*) name)) {
+            //exists!
+            return FALSE;
+        }
     }
-    return 1;
+    return TRUE;
 }
 
 int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) { //Michał
@@ -543,11 +587,12 @@ int simplefs_openfs(char *path) { //Adam
     }
     master_block * mb = _get_master_block(fd);
     int magic_check_result = check_magic_number(mb);
-    free(mb);
     if(check_magic_number(mb) == -1) {
+        free(mb);
         close(fd);
         return -1;
     }
+    free(mb);
     return fd;
 }
 
@@ -565,11 +610,11 @@ int simplefs_open(char *name, int mode, int fsfd) { //Michal
     if(file_inode == NULL) {
         free(masterblock);
         return FILE_DOESNT_EXIST;
-    } else if(file_inode->type != INODE_FILE) {
+    } /*else if(file_inode->type != INODE_FILE) {
         free(masterblock);
         free(file_inode);
         return FILE_DOESNT_EXIST;
-    }
+    }*/
     //file_inode now points to the real file
     //need to create file struct
     i = 0;
@@ -599,8 +644,9 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
 }
 
 int simplefs_mkdir(char *name, int fsfd) { //Michal
+    return _create_file_or_dir(name, READ_AND_WRITE, fsfd, TRUE);
     //separate new dir name from the path
-    char* path = _get_path_for_new_file(name);
+    /*char* path = _get_path_for_new_file(name);
     initialized_structures* structures = _initialize_structures(fsfd, 1);
     int fd = simplefs_open(path, READ_AND_WRITE, fsfd);
     if(fd < 0) {
@@ -631,7 +677,7 @@ int simplefs_mkdir(char *name, int fsfd) { //Michal
 
     free(structures);
     simplefs_close(fd);
-    return 0;
+    return 0;*/
 }
 
 void _try_lock_lock_inode(master_block * mb, int fd) {
@@ -666,12 +712,19 @@ void _lock_lock_file(master_block * mb, int fd) {
     lock_block.l_len = mb->block_size;
     lock_block.l_pid = getpid();
     fcntl(fd, F_SETLKW, &lock_block);
-    int * counter = (int *) mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    unsigned delta;
+    int * counter = (int *) mmap_enhanced(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED,
+                    fd, mb->data_start_block * mb->block_size, &delta);
+    printf("Printing master block data. data start block = %d, block size = %d\n", mb->data_start_block, mb->block_size);
+    printf("mmapped counter, address = %d\n", counter);
+    printf("Co wychodzi? %X\n", (mb->data_start_block * mb->block_size) & ~(sysconf(_SC_PAGE_SIZE) - 1));
+    printf("Counter = %d", *counter);
     (*counter)++;
-    munmap(counter, sizeof(int));
+    printf("Counter = %d", *counter);
+    printf("Munmap result = %d\n", munmap_enhanced(counter, sizeof(int), delta));
     //unlock lock block
     lock_block.l_type = F_UNLCK;
-    fcntl(fd, F_SETLK, &lock_block);   
+    fcntl(fd, F_SETLK, &lock_block);
 }
 
 void _unlock_lock_file(master_block * mb, int fd) {
@@ -683,10 +736,12 @@ void _unlock_lock_file(master_block * mb, int fd) {
     lock_block.l_len = mb->block_size;
     lock_block.l_pid = getpid();
     fcntl(fd, F_SETLKW, &lock_block);
-    int * counter = (int *) mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    unsigned delta;
+    int * counter = (int *) mmap_enhanced(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED,
+                    fd, mb->data_start_block * mb->block_size, &delta);
     (*counter)--;
     int value = *counter;
-    munmap(counter, sizeof(int));
+    munmap_enhanced(counter, sizeof(int), delta);
     if(value != 0) {
         _try_lock_lock_inode(mb, fd);
     } else {
@@ -694,7 +749,7 @@ void _unlock_lock_file(master_block * mb, int fd) {
     }
     //unlock lock block
     lock_block.l_type = F_UNLCK;
-    fcntl(fd, F_SETLK, &lock_block); 
+    fcntl(fd, F_SETLK, &lock_block);
 }
 
 int simplefs_close(int fd) {
@@ -707,10 +762,7 @@ int simplefs_close(int fd) {
     free(file_found);
 }
 
-/**
- * TODO: sprawdzanei istnienia
- */
-int simplefs_creat(char *name, int mode, int fsfd) { //Adam
+int _create_file_or_dir(char *name, int mode, int fsfd, int is_dir) {
 
     int result = OK;
     int full_path_length = strlen(name);
@@ -718,7 +770,7 @@ int simplefs_creat(char *name, int mode, int fsfd) { //Adam
     for(path_length = full_path_length; path_length > 0 && name[path_length - 1] != '/'; path_length--) {
     }
     //ścieżka
-    char *path = (char*)malloc(path_length);
+    char *path = (char*)malloc(path_length + 1);
     //nazwa
     char *file_name = (char*)malloc(full_path_length - path_length + 1);
     strncpy(path, name, path_length);
@@ -736,7 +788,9 @@ int simplefs_creat(char *name, int mode, int fsfd) { //Adam
     printf("%s\n", file_name);
     //blokujemy plik .lock
     initialized_structures * is = _initialize_structures(fsfd, 0);
+    printf("masterblock pointer: %d\n", is->master_block_pointer);
     inode * parent_node;
+    printf("Przed seg fault: is = %d\n", is);
     _lock_lock_file(is->master_block_pointer, fsfd);
     do {
         unsigned long tmp;
@@ -749,14 +803,14 @@ int simplefs_creat(char *name, int mode, int fsfd) { //Adam
         printf("\n%s\n", parent_node->filename);
         inode new_file;
         strcpy(new_file.filename, file_name);
-        new_file.type = 'F';
+        new_file.type = (is_dir ? 'D' : 'F');
         new_file.size = 0;
         new_file.first_data_block = 0;
         if(mode & READ_AND_WRITE != 0) {
             result = WRONG_MODE;
             break;
         }
-        unsigned long inode_no = _insert_new_inode(&new_file ,is->master_block_pointer, fsfd);
+        unsigned long inode_no = _insert_new_inode(&new_file, is, fsfd);
         path[path_length] = '\0'; //przerobic katalog na plik
         write_params write_params_value;
         write_params_value.fsfd = fsfd;
@@ -769,9 +823,8 @@ int simplefs_creat(char *name, int mode, int fsfd) { //Adam
         write_params_value.data_length = sizeof(file_signature);
         write_params_value.lock_blocks = TRUE;
         write_params_value.file_offset = -1; //append
-        write_params_value.for_each_record = NULL;
-        write_params_value.record_length = 0;
-        write_params_value.additional_param = 0;
+        write_params_value.for_each_record = _check_duplicate_file_names_in_block;
+        write_params_value.additional_param = file_name;
         _write_unsafe(is, write_params_value);
     } while( 0 );
     _unlock_lock_file(is->master_block_pointer, fsfd);
@@ -780,6 +833,13 @@ int simplefs_creat(char *name, int mode, int fsfd) { //Adam
     free(path);
     free(file_name);
     return result;
+}
+
+/**
+ * TODO: sprawdzanei istnienia
+ */
+int simplefs_creat(char *name, int mode, int fsfd) { //Adam
+    return _create_file_or_dir(name, mode, fsfd, FALSE);
 }
 
 int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
