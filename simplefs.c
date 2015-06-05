@@ -477,7 +477,7 @@ void _save_buffer_to_file(initialized_structures * initialized_structures_pointe
 
     unsigned int additional_block_offset = real_file_offset % real_block_size;
     unsigned int data_offset = 0;
-    for (block_to_start; block_to_start < number_of_all_blocks_be_written; number_of_all_blocks_be_written++) {
+    for (block_to_start; block_to_start < number_of_all_blocks_be_written; block_to_start++) {
         unsigned long block_number = blocks_table[block_to_start];
 
         unsigned long block_offset = _get_block_offset(master_block_pointer, block_number);
@@ -488,7 +488,6 @@ void _save_buffer_to_file(initialized_structures * initialized_structures_pointe
                 params->data, data_offset, data_length_for_block);
         printf("Sizeof file signature is %d\n", sizeof(file_signature));
         write(params->fsfd, params->data + sizeof(char) * data_offset, data_length_for_block);
-
         additional_block_offset = 0;
         data_offset += data_length_for_block;
 
