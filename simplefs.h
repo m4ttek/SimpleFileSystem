@@ -116,7 +116,7 @@ int simplefs_close(int fd);
  * @return {0} sukces, {-1, -2, -3, -4, -5} błąd (patrz niżej)
  */
 
-int simplefs_creat (char *name, int mode, int fsfd);
+int simplefs_creat (char *name, int fsfd);
 
 //Zwracane
 #define OK 0
@@ -174,7 +174,7 @@ int simplefs_lseek(int fd, int whence, int offset, int fsfd);
 
 #define INODE_DIR 'D'
 #define INODE_FILE 'F'
-#define INODE_EMPTY 'E'
+#define INODE_EMPTY '\0'
 
 /**
  * Struktura metryczki dla pliku na dysku.

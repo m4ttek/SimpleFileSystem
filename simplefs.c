@@ -104,6 +104,7 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
     master_block * master_block_pointer
             = (master_block *) mmap(NULL, sizeof(master_block), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (master_block_pointer == (master_block *) MAP_FAILED) {
+        perror("mmap");
         close(fd);
         return NULL;
     }
@@ -523,6 +524,7 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     file * file_structure = _get_file_by_fd(params.fd);
     inode * file_inode = _load_inode_from_file_structure(initialized_structures_pointer, file_structure);
     unsigned long file_size = file_inode->size;
+    printf("_write_unsafe. Filze size = %d\n", file_size);
 
     // sprawdzenie poprawności dostępu do pliku
     if (file_structure->mode == READ_MODE) {
@@ -648,12 +650,17 @@ printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_
     fcntl(fd, F_SETLKW, &lock);
     printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_pointer);
     unsigned long inode_no = structures->master_block_pointer->first_free_inode;
+    if(inode_no == 0) {
+        lock.l_type = F_UNLCK;
+        fcntl(fd, F_SETLK, &lock);
+        return 0;
+    }
     structures->inode_table[inode_no] = *new_inode;
     //now need to find new next free inode
     unsigned long i;
     for(i = inode_no + 1; i < (structures->master_block_pointer->number_of_inode_table_blocks * structures->master_block_pointer->block_size)
             / sizeof(inode); i++) {
-        if(structures->inode_table[i].type == 'E') {
+        if(structures->inode_table[i].type == INODE_EMPTY) {
             structures->master_block_pointer->first_free_inode = i;
             lock.l_type = F_UNLCK;
             fcntl(fd, F_SETLK, &lock);
@@ -662,9 +669,10 @@ printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_
     }
     //no free inodes!
     //unlock
+    structures->master_block_pointer->first_free_inode = 0;
     lock.l_type = F_UNLCK;
     fcntl(fd, F_SETLK, &lock);
-    return 0;
+    return inode_no;
     /*int block_no = inode_no/INODES_IN_BLOCK;
     while(block_no < masterblock->data_start_block) {
         inode* inodes_in_block = (inode*) _read_block(fd, block_no, current_mb->first_inode_table_block, current_mb->block_size);
@@ -696,15 +704,20 @@ printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_
  * @return 0, jeśli plik istnieje, 1, jeśli nie
  */
 int _check_duplicate_file_names_in_block(block* data_block, int block_size, void* name) {
-    file_signature** signatures = (file_signature**) data_block->data;
+    file_signature* signature = (file_signature*) data_block->data;
     printf("in check_duplicat file names. data_block->data = %X, liczba sygnatur na plik:%d\n", data_block->data, block_size / sizeof(file_signature));
     int i;
     for(i = 0; i < block_size / sizeof(file_signature); i++) {
         printf("wchodze");
-        printf("signature node: %d, signature name %s\n", signatures[i]->inode_no, signatures[i]->name);
-        if(signatures[i]->inode_no != 0 && strcmp(signatures[i]->name, (char*) name)) {
+        printf("signature node: %d, signature name %s\n", signature->inode_no, signature->name);
+        if(signature->inode_no != 0 && !strcmp(signature->name, (char*) name)) {
             //exists!
             return FALSE;
+        }
+        printf("Adding %d to signature\n", sizeof(file_signature));
+        signature++;
+        if(signature->inode_no == 0) {
+            break;
         }
     }
     printf("wychodze");
@@ -724,7 +737,7 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
         return NUMBER_OF_BLOCKS_ZERO;
     }
 
-    int fd = open(path, O_WRONLY | O_CREAT, 0644);
+    int fd = open(path, O_RDWR | O_CREAT, 0644);
     if(fd == -1) {
         return HOST_FILE_ACCESS_ERROR;
     }
@@ -752,6 +765,9 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
     lseek(fd, fs_size - 1, SEEK_SET);
     write(fd, "\0", 1);
     printf("Allocated %d bytes\n", fs_size);
+
+    //create .lock file
+    simplefs_creat("/.lock", fd);
 
     close(fd);
     return 0;
@@ -992,7 +1008,7 @@ int simplefs_close(int fd) {
     free(file_found);
 }
 
-int _create_file_or_dir(char *name, int mode, int fsfd, int is_dir) {
+int _create_file_or_dir(char *name, int fsfd, int is_dir) {
 
     int result = OK;
     int full_path_length = strlen(name);
@@ -1036,11 +1052,8 @@ int _create_file_or_dir(char *name, int mode, int fsfd, int is_dir) {
         new_file.type = (is_dir ? 'D' : 'F');
         new_file.size = 0;
         new_file.first_data_block = 0;
-        if(mode & READ_AND_WRITE != 0) {
-            result = WRONG_MODE;
-            break;
-        }
         unsigned long inode_no = _insert_new_inode(&new_file, is, fsfd);
+        printf("Inserted new inode: %lu\n", inode_no);
         path[path_length] = '\0'; //przerobic katalog na plik
         write_params write_params_value;
         write_params_value.fsfd = fsfd;
@@ -1055,9 +1068,11 @@ int _create_file_or_dir(char *name, int mode, int fsfd, int is_dir) {
         write_params_value.file_offset = -1; //append
         write_params_value.for_each_record = _check_duplicate_file_names_in_block;
         write_params_value.additional_param = file_name;
-        _write_unsafe(is, write_params_value);
-        if (_write_unsafe(is, write_params_value) == NO_FREE_BLOCKS) {
+        int write_result = _write_unsafe(is, write_params_value);
+        if (write_result == NO_FREE_BLOCKS) {
             // TODO by ADAM
+        } else if(write_result == -2) {
+            result = FILE_ALREADY_EXISTS;
         }
     } while( 0 );
     _unlock_lock_file(is->master_block_pointer, fsfd);
@@ -1071,8 +1086,8 @@ int _create_file_or_dir(char *name, int mode, int fsfd, int is_dir) {
 /**
  * TODO: sprawdzanei istnienia
  */
-int simplefs_creat(char *name, int mode, int fsfd) { //Adam
-    return _create_file_or_dir(name, mode, fsfd, FALSE);
+int simplefs_creat(char *name, int fsfd) { //Adam
+    return _create_file_or_dir(name, fsfd, FALSE);
 }
 
 int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam

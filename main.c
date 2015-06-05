@@ -27,7 +27,9 @@ void creat_file(char *filesystem, char *path) {
     }
 
 
-    simplefs_creat(path, 0, fdfs);
+    if(simplefs_creat(path, fdfs) == FILE_ALREADY_EXISTS) {
+        printf("Plik już istnieje!\n");
+    }
 }
 
 /**
