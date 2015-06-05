@@ -114,12 +114,12 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
     }
     printf("mmaped master block pointer. Block size is %d\n", master_block_pointer->block_size);
     // pobranie bitmapy
-    block_bitmap * block_bitmap_pointer = NULL;
+    char * block_bitmap_pointer = NULL;
     unsigned int bitmaps_size = 0;
     unsigned bitmap_delta;
     if (init_bitmaps != 0) {
         bitmaps_size = master_block_pointer->number_of_bitmap_blocks * master_block_pointer->block_size;
-        block_bitmap_pointer = (block_bitmap *) mmap_enhanced(NULL, bitmaps_size,
+        block_bitmap_pointer = (char *) mmap_enhanced(NULL, bitmaps_size,
                                                      PROT_READ | PROT_WRITE, MAP_SHARED, fd, master_block_pointer->block_size, &bitmap_delta);
         if (block_bitmap_pointer == MAP_FAILED) {
             munmap(master_block_pointer, sizeof(master_block));
@@ -311,9 +311,10 @@ int _unblock_first_free_block(int fd, struct flock * fl) {
  */
 int _find_free_blocks(int fsfd, initialized_structures * initialized_structures_pointer, unsigned long number_of_free_blocks,
                       unsigned long * free_blocks) {
+    printf("In _find_free_blocks. free blocks = %d\n", *free_blocks);
     master_block * master_block = initialized_structures_pointer->master_block_pointer;
     unsigned long first_free_block_number = master_block->first_free_block_number;
-    block_bitmap * block_bitmap_pointer = initialized_structures_pointer->block_bitmap_pointer;
+    char * block_bitmap_pointer = initialized_structures_pointer->block_bitmap_pointer;
     printf("block bitmap pointer = %X\n", block_bitmap_pointer);
 
     // wolny blok zapisany na wypadek, gdyby poszukiwanie wolnych bloków nie mogło się poprawnie zakończyć (brakuje miejsca)
@@ -321,9 +322,9 @@ int _find_free_blocks(int fsfd, initialized_structures * initialized_structures_
     unsigned long free_block_idx = 0;
     for (free_block_idx; free_block_idx < number_of_free_blocks; free_block_idx++) {
         // zaznaczenie bloku jako zajętego
-        printf("bitmap pointer %d\n", block_bitmap_pointer->bitmap);
-        char * bitmap_byte = block_bitmap_pointer->bitmap + ((master_block->first_free_block_number / 8) * sizeof(char));
-        printf("bitmap byte evaluates to %d\n", block_bitmap_pointer->bitmap);
+        printf("bitmap pointer %d\n", block_bitmap_pointer);
+        char * bitmap_byte = block_bitmap_pointer + ((master_block->first_free_block_number / 8) * sizeof(char));
+        printf("bitmap byte evaluates to %d\n", bitmap_byte);
         unsigned int bit_in_byte = master_block->first_free_block_number % sizeof(char);
         (*bitmap_byte) |= (1 << bit_in_byte);
 
@@ -352,7 +353,7 @@ int _find_free_blocks(int fsfd, initialized_structures * initialized_structures_
             } else if (master_block->first_free_block_number >= master_block->number_of_blocks) {
                 // dotarcie do końca wszystkich bloków (pierwszy blok to plik .lock)
                 master_block->first_free_block_number = master_block->data_start_block + 1;
-                bitmap_byte = block_bitmap_pointer->bitmap + 1;
+                bitmap_byte = block_bitmap_pointer + 1;
             } else {
                 // przesuwamy się na następne miejsce w bitmapie (niewyrównane bloki zostaną pominięte)
                 bitmap_byte += sizeof(char);
@@ -370,6 +371,7 @@ int _find_free_blocks(int fsfd, initialized_structures * initialized_structures_
 file * _get_file_by_fd(int fd) {
     file* file_found;
     HASH_FIND_INT( open_files, &fd, file_found);
+    printf("Found file. mode = %d\n", file_found->mode);
     return file_found;
 }
 
@@ -584,7 +586,7 @@ master_block* _get_master_block(int fd) {
  * Funkcja zwracająca podaną ścieżkę skróconą o ostatnią część - sluży więc do oddzielenia istniejącej ścieżki
  * od nazwy pliku (folderu), który ma być utworzony
  */
-char* _get_path_for_new_file(char* full_path) {
+char* _get_path_for_file(char* full_path) {
     char* path = malloc(strlen(full_path) * sizeof(char));
     strcpy(path, full_path);
     int i;
@@ -772,6 +774,7 @@ int simplefs_open(char *name, int mode, int fsfd) { //Michal
     new_file->fd = i;
     new_file->position = 0;
     new_file->inode_no = tmp;
+    new_file->mode = (char) mode;
     HASH_ADD_INT(open_files, fd, new_file);
     pthread_mutex_unlock(&open_files_write_mutex);
     free(masterblock);
@@ -779,7 +782,38 @@ int simplefs_open(char *name, int mode, int fsfd) { //Michal
 }
 
 int simplefs_unlink(char *name, int fsfd) { //Michal
-    return -1;
+    initialized_structures* structures = _initialize_structures(fsfd, 1);
+    _lock_lock_inode(structures->master_block_pointer, fsfd);
+    _lock_lock_file(structures->master_block_pointer, fsfd);
+    char* path = _get_path_for_file(name);
+    unsigned long inode_no;
+    inode* file_inode = _get_inode_by_path(name, structures->master_block_pointer, fsfd, &inode_no);
+    if(file_inode == NULL) {
+        return FILE_DOESNT_EXIST;
+    }
+    //zwolnienie bloków
+    unsigned long blocks_freed = 0;
+    unsigned long current_block_no = file_inode->first_data_block;
+    while(current_block_no != 0) {
+        unsigned long bitmap_block_no = current_block_no / (8 * structures->master_block_pointer->block_size);
+        char bit_offset = current_block_no % (8 * structures->master_block_pointer->block_size);
+        structures->block_bitmap_pointer[bitmap_block_no] &= ~(1 << bit_offset);
+        block* current_block = _read_block(fsfd, current_block_no, structures->master_block_pointer->data_start_block,
+                                            structures->master_block_pointer->block_size);
+        current_block_no = current_block->next_data_block;
+        blocks_freed++;
+        free(current_block);
+    }
+    structures->master_block_pointer->number_of_free_blocks += blocks_freed;
+    //mark inode as empty
+    structures->inode_table[inode_no].type = 'E';
+
+    _unlock_lock_file(structures->master_block_pointer, fsfd);
+    _unlock_lock_inode(structures->master_block_pointer, fsfd);
+    if(_get_lock_counter(fsfd, structures->master_block_pointer) != 0) {
+        _try_lock_lock_inode(structures->master_block_pointer, fsfd);
+    }
+    return OK;
 }
 
 int simplefs_mkdir(char *name, int fsfd) { //Michal
@@ -830,6 +864,17 @@ void _try_lock_lock_inode(master_block * mb, int fd) {
     lock_inode.l_len = sizeof(inode);
     lock_inode.l_pid = getpid();
     fcntl(fd, F_SETLK, &lock_inode);
+}
+
+void _lock_lock_inode(master_block * mb, int fd) {
+    //lock inode
+    struct flock lock_inode;
+    lock_inode.l_type = F_WRLCK;
+    lock_inode.l_whence = SEEK_SET;
+    lock_inode.l_start = (mb->first_inode_table_block * mb->block_size + sizeof(inode) * 1);
+    lock_inode.l_len = sizeof(inode);
+    lock_inode.l_pid = getpid();
+    fcntl(fd, F_SETLKW, &lock_inode);
 }
 
 void _unlock_lock_inode(master_block * mb, int fd) {
@@ -891,6 +936,13 @@ void _unlock_lock_file(master_block * mb, int fd) {
     //unlock lock block
     lock_block.l_type = F_UNLCK;
     fcntl(fd, F_SETLK, &lock_block);
+}
+
+int _get_lock_counter(int fd, master_block* masterblock) {
+    block* lock_block = _read_block(fd, 0, masterblock->data_start_block, masterblock->block_size);
+    int counter = *((int*) lock_block->data);
+    free(lock_block);
+    return counter;
 }
 
 int simplefs_close(int fd) {

@@ -204,14 +204,6 @@ typedef struct master_block_t {
 } master_block;
 
 /**
- * Struktura bloku bitmapowego, zawierająca bity zajętości bloków.
- */
-typedef struct block_bitmap_t {
-    //bitmap length is block-size
-	char* bitmap;
-} block_bitmap;
-
-/**
  * Struktura reprezentująca blok zawierający fragment danych jednego pliku.
  */
 typedef struct block_t {
@@ -240,7 +232,7 @@ typedef struct file_t {
 
 typedef struct initialized_structures_t {
     master_block * master_block_pointer;
-    block_bitmap * block_bitmap_pointer;
+    char* block_bitmap_pointer;
     inode * inode_table;
     unsigned bitmap_delta;
     unsigned inode_delta;
