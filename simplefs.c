@@ -177,10 +177,20 @@ void _uninitilize_structures(initialized_structures * initialized_structures_poi
  * @return odczytany blok
  */
 void* _read_block(int fd, long block_no, long block_offset, long block_size) {
-    void* block_read = malloc(sizeof(block));
+    char* block_data = malloc(block_size-sizeof(unsigned long));
+    block* block_read = malloc(sizeof(block));
     lseek(fd, (block_no + block_offset) * block_size, SEEK_SET);
-    read(fd, block_read, sizeof(block));
+    //read data
+    read(fd, block_data, block_size - sizeof(unsigned long));
+    //read next data block
+    read(fd, &(block_read->next_data_block), sizeof(unsigned long));
+    block_read->data = block_data;
     return block_read;
+}
+
+void free_block_struct(block* bl) {
+    free(bl->data);
+    free(bl);
 }
 
 /**
@@ -686,6 +696,7 @@ printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_
  */
 int _check_duplicate_file_names_in_block(block* data_block, int block_size, void* name) {
     file_signature** signatures = (file_signature**) data_block->data;
+    printf("in check_duplicat file names. data_block->data = %X\n", data_block->data);
     int i;
     for(i = 0; i < block_size / sizeof(file_signature); i++) {
         if(signatures[i]->inode_no != 0 && strcmp(signatures[i]->name, (char*) name)) {
