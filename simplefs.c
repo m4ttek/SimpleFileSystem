@@ -411,22 +411,21 @@ inode * _load_inode_from_file_structure(initialized_structures * initialized_str
 int _get_blocks_numbers_taken_by_file(int fsfd, unsigned long first_block_no, master_block * master_block_pointer,
                                       int (*for_each_record)(void*, int, void*), void * additional_param, unsigned long * blocks_table) {
     printf("\n**** _get_blocks_numbers_taken_by_file ****\n");
-    int i = 0;
-    blocks_table[i++] = first_block_no;
     printf("Pierwszy blok: %u\n", blocks_table[0]);
-    block * block_pointer = _read_block(fsfd, first_block_no, master_block_pointer->data_start_block, master_block_pointer->block_size);
 
-    printf("nastepny blok danych: %u\n", block_pointer->next_data_block);
-    while (block_pointer->next_data_block != 0) {
-        block_pointer = _read_block(fsfd, block_pointer->next_data_block, master_block_pointer->data_start_block, master_block_pointer->block_size);
+    block * block_pointer = NULL;
+    int i = 0;
+    unsigned long block_no = first_block_no;
+    do {
+        block_pointer = _read_block(fsfd, block_no, master_block_pointer->data_start_block, master_block_pointer->block_size);
 
         // wywołanie funkcji sprawdzającej block
         if (for_each_record != NULL && for_each_record(block_pointer, master_block_pointer->block_size, additional_param) == 0) {
             return -2;
         }
-        blocks_table[i++] = block_pointer->next_data_block;
-        printf("nastepny blok danych: %u\n", block_pointer->next_data_block);
-    }
+        blocks_table[i++] = block_no = block_pointer->next_data_block;
+        printf("nastepny blok danych: %u\n", block_no);
+    } while (block_pointer->next_data_block != 0);
     printf("Wyjscie z **** _get_blocks_numbers_taken_by_file ****\n");
     return 0;
 }
@@ -698,14 +697,17 @@ printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_
  */
 int _check_duplicate_file_names_in_block(block* data_block, int block_size, void* name) {
     file_signature** signatures = (file_signature**) data_block->data;
-    printf("in check_duplicat file names. data_block->data = %X\n", data_block->data);
+    printf("in check_duplicat file names. data_block->data = %X, liczba sygnatur na plik:%d\n", data_block->data, block_size / sizeof(file_signature));
     int i;
     for(i = 0; i < block_size / sizeof(file_signature); i++) {
+        printf("wchodze");
+        printf("signature node: %d, signature name %s\n", signatures[i]->inode_no, signatures[i]->name);
         if(signatures[i]->inode_no != 0 && strcmp(signatures[i]->name, (char*) name)) {
             //exists!
             return FALSE;
         }
     }
+    printf("wychodze");
     return TRUE;
 }
 
