@@ -484,6 +484,9 @@ void _save_buffer_to_file(initialized_structures * initialized_structures_pointe
         lseek(params->fsfd, block_offset + additional_block_offset, SEEK_SET);
 
         unsigned long data_length_for_block = (params->data_length - data_offset) % (real_block_size - additional_block_offset);
+        printf("Suspicious write. params->data = %X, data_offset = %d, data_length_for_block = %d\n",
+                params->data, data_offset, data_length_for_block);
+        printf("Sizeof file signature is %d\n", sizeof(file_signature));
         write(params->fsfd, params->data + sizeof(char) * data_offset, data_length_for_block);
 
         additional_block_offset = 0;
