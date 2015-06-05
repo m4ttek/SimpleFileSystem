@@ -55,7 +55,7 @@ master_block get_initial_master_block(unsigned block_size, unsigned number_of_bl
     masterblock.block_size = block_size;
     masterblock.number_of_blocks = number_of_blocks;
     masterblock.number_of_free_blocks = number_of_blocks;
-    masterblock.first_free_block_number = 0;
+    masterblock.first_free_block_number = 1;
     masterblock.number_of_bitmap_blocks = ceil((double) number_of_blocks / (block_size * 8));
     masterblock.number_of_inode_table_blocks = ceil((double) number_of_blocks / floor((double) block_size / sizeof(inode)));
     masterblock.data_start_block = 1 + masterblock.number_of_bitmap_blocks + masterblock.number_of_inode_table_blocks;
@@ -86,7 +86,7 @@ int check_magic_number(master_block * mb) {
 }
 
 unsigned long _get_block_offset(master_block * master_block_pointer, unsigned long block_number) {
-    return master_block_pointer->block_size * block_number;
+    return master_block_pointer->block_size * (block_number + master_block_pointer->data_start_block);
 }
 
 /**
@@ -102,7 +102,7 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
     initialized_structures * initialized_structures_pointer = malloc(sizeof(initialized_structures));
     // zamapowanie master blocka
     master_block * master_block_pointer
-            = (master_block *) mmap(NULL, sizeof(master_block), PROT_READ, MAP_SHARED, fd, 0);
+            = (master_block *) mmap(NULL, sizeof(master_block), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (master_block_pointer == (master_block *) MAP_FAILED) {
         close(fd);
         return NULL;
@@ -311,7 +311,7 @@ int _unblock_first_free_block(int fd, struct flock * fl) {
  */
 int _find_free_blocks(int fsfd, initialized_structures * initialized_structures_pointer, unsigned long number_of_free_blocks,
                       unsigned long * free_blocks) {
-    printf("In _find_free_blocks. free blocks = %d\n", *free_blocks);
+    printf("In _find_free_blocks. free blocks = %d\n", number_of_free_blocks);
     master_block * master_block = initialized_structures_pointer->master_block_pointer;
     unsigned long first_free_block_number = master_block->first_free_block_number;
     char * block_bitmap_pointer = initialized_structures_pointer->block_bitmap_pointer;
@@ -321,33 +321,42 @@ int _find_free_blocks(int fsfd, initialized_structures * initialized_structures_
     unsigned long saved_first_free_block_number = first_free_block_number;
     unsigned long free_block_idx = 0;
     for (free_block_idx; free_block_idx < number_of_free_blocks; free_block_idx++) {
+        printf("przebieg petli: %d\n", free_block_idx );
+
         // zaznaczenie bloku jako zajętego
         printf("bitmap pointer %d\n", block_bitmap_pointer);
         char * bitmap_byte = block_bitmap_pointer + ((master_block->first_free_block_number / 8) * sizeof(char));
-        printf("bitmap byte evaluates to %d\n", bitmap_byte);
         unsigned int bit_in_byte = master_block->first_free_block_number % sizeof(char);
+        printf("bitmap byte evaluates to %d bit in byte %d\n", bitmap_byte, bit_in_byte);
         (*bitmap_byte) |= (1 << bit_in_byte);
 
+        printf("Po zapisie\n");
         // zapisanie numeru wolnego bloku do tablicy
-        free_blocks[free_block_idx] = master_block->first_free_block_number;
+        *(free_blocks + (free_block_idx * sizeof(unsigned long))) = master_block->first_free_block_number;
 
+        printf("Zmniejszenie liczby wolnych blokow\n");
         // zmniejszenie liczby wolnych bloków
         master_block->number_of_free_blocks--;
 
+        printf("Nastepny blok pretendednt\n");
         // następny blok jest pretendentem na wolny blok
         master_block->first_free_block_number++;
 
+        printf("przed whilem\n");
         // wyszkanie następnego wolnego bloku, a w nim wolnego bitu
         while (TRUE) {
-            unsigned bytes_mask = (0xFFFF << (master_block->first_free_block_number - 1));
+            unsigned char bytes_mask = (0xFFFF << (master_block->first_free_block_number - 1));
+            printf("Maska bitowa dla bajtu: %x\n", bytes_mask);
+            printf("Maska bitwa nalozona na bajt: %x\n", ((*bitmap_byte) & bytes_mask));
             // jeśli istnieje wolny bit w bitmapie
             if ((((*bitmap_byte) & bytes_mask) != bytes_mask) && master_block->first_free_block_number < master_block->number_of_blocks) {
                 char bitmap_byte_to_parse = (*bitmap_byte);
-                while (bitmap_byte_to_parse & (1 << master_block->first_free_block_number % sizeof(char))) {
+                while (bitmap_byte_to_parse & (1 << (master_block->first_free_block_number % 8))) {
                     master_block->first_free_block_number++;
                 }
                 break;
-            } else if (master_block->first_free_block_number == saved_first_free_block_number) {
+            } else if (master_block->first_free_block_number >= saved_first_free_block_number
+                       && master_block->first_free_block_number <= saved_first_free_block_number + 8) {
                 // nastąpił powrót do tego samego bloku
                 return NO_FREE_BLOCKS;
             } else if (master_block->first_free_block_number >= master_block->number_of_blocks) {
@@ -360,8 +369,9 @@ int _find_free_blocks(int fsfd, initialized_structures * initialized_structures_
                 master_block->first_free_block_number += 8;
             }
         }
+        printf("zakonczenie wyszukiwania wolnych blokow!\n");
     }
-
+    printf("wyjscie z find free blocks!\n");
     return 0;
 }
 
@@ -388,11 +398,15 @@ inode * _load_inode_from_file_structure(initialized_structures * initialized_str
 /**
  * Pobiera block.
  */
-int _get_blocks_numbers_taken_by_file(int fsfd, unsigned int first_block_no, master_block * master_block_pointer,
-                                      int (*for_each_record)(void*, int, void*), void * additional_param, unsigned int * blocks_table) {
+int _get_blocks_numbers_taken_by_file(int fsfd, unsigned long first_block_no, master_block * master_block_pointer,
+                                      int (*for_each_record)(void*, int, void*), void * additional_param, unsigned long * blocks_table) {
+    printf("\n**** _get_blocks_numbers_taken_by_file ****\n");
     int i = 0;
     blocks_table[i++] = first_block_no;
+    printf("Pierwszy blok: %u\n", blocks_table[0]);
     block * block_pointer = _read_block(fsfd, first_block_no, master_block_pointer->data_start_block, master_block_pointer->block_size);
+
+    printf("nastepny blok danych: %u\n", block_pointer->next_data_block);
     while (block_pointer->next_data_block != 0) {
         block_pointer = _read_block(fsfd, block_pointer->next_data_block, master_block_pointer->data_start_block, master_block_pointer->block_size);
 
@@ -401,18 +415,23 @@ int _get_blocks_numbers_taken_by_file(int fsfd, unsigned int first_block_no, mas
             return -2;
         }
         blocks_table[i++] = block_pointer->next_data_block;
+        printf("nastepny blok danych: %u\n", block_pointer->next_data_block);
     }
+    printf("Wyjscie z **** _get_blocks_numbers_taken_by_file ****\n");
     return 0;
 }
 
 /**
  * Blokuje wybrane locki.
  */
-void _lock_file_blocks(int fsfd, master_block * master_block_pointer, unsigned int * blocks_table,
-                       unsigned int number_of_blocks, struct flock * flock_structures) {
-    unsigned int idx = 0;
+void _lock_file_blocks(int fsfd, master_block * master_block_pointer, unsigned long * blocks_table,
+                       unsigned long number_of_blocks, struct flock * flock_structures) {
+    unsigned long idx = 0;
+    printf("\n\n******** _lock_file_blocks ********\n");
+    printf("Liczba blokow: %d\n", number_of_blocks);
     for (idx; idx < number_of_blocks; idx++) {
-        unsigned int block_offset = _get_block_offset(master_block_pointer, blocks_table[idx]);
+        unsigned long block_offset = _get_block_offset(master_block_pointer, blocks_table[idx]);
+        printf("Offset dla bloku: %u, wynosi: %u", blocks_table[idx], block_offset);
         struct flock * flock_str = flock_structures + (idx * sizeof(flock_structures));
         flock_str->l_type = F_WRLCK;
         flock_str->l_whence = SEEK_SET;
@@ -440,10 +459,10 @@ void _unlock_file_blocks(int fsfd, struct flock * flock_structures, unsigned lon
  * Zakładana jest odpowiednia wielkość wypełnionej tablicy {blocks_table}, tak aby dane mogły zostać zapisane.
  */
 void _save_buffer_to_file(initialized_structures * initialized_structures_pointer, write_params * params,
-                          unsigned int * blocks_table, unsigned int real_file_offset) {
+                          unsigned long * blocks_table, unsigned long real_file_offset) {
     master_block * master_block_pointer = initialized_structures_pointer->master_block_pointer;
     unsigned int real_block_size = master_block_pointer->block_size - sizeof(long);
-    unsigned int block_to_start = real_file_offset / real_block_size;
+    unsigned long block_to_start = real_file_offset / real_block_size;
     unsigned int number_of_all_blocks_be_written = 1 + ((params->data_length - 1) / real_block_size);
 
     unsigned int additional_block_offset = real_file_offset % real_block_size;
@@ -516,19 +535,21 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     if (number_of_blocks_to_be_taken_by_file == 0) {
         number_of_blocks_to_be_taken_by_file = 1;
     }
-    unsigned int * blocks_table = NULL;
+    unsigned long * blocks_table = NULL;
     if (number_of_all_taken_blocks_by_file >= number_of_blocks_to_be_taken_by_file) {
-        blocks_table = (unsigned int *) malloc(sizeof(unsigned int) * number_of_all_taken_blocks_by_file);
+        blocks_table = (unsigned long *) malloc(sizeof(unsigned long) * number_of_all_taken_blocks_by_file);
     } else {
-        blocks_table = (unsigned int *) malloc(sizeof(unsigned int) * number_of_blocks_to_be_taken_by_file);
+        blocks_table = (unsigned long *) malloc(sizeof(unsigned long) * number_of_blocks_to_be_taken_by_file);
     }
     // czy trzeba wyszukać nowe bloki danych dla pliku
     if ((number_of_blocks_to_be_taken_by_file > number_of_all_taken_blocks_by_file)
         || file_inode->first_data_block == 0) {
         // wyszukanie nowych bloków danych
         unsigned int number_of_free_blocks = number_of_blocks_to_be_taken_by_file - number_of_all_taken_blocks_by_file;
+        printf("\n\n************\nLiczba wszystkich blokow zajmowanych przez plik: %d, liczba blokow do zajecia: %d\n\n", number_of_all_taken_blocks_by_file, number_of_blocks_to_be_taken_by_file);
         if (_find_free_blocks(params.fsfd, initialized_structures_pointer, number_of_free_blocks,
-                              blocks_table + number_of_all_taken_blocks_by_file) == -2) {
+                              blocks_table + (number_of_all_taken_blocks_by_file * sizeof(unsigned long))) == NO_FREE_BLOCKS) {
+            printf("zle!");
             _unblock_first_free_block(params.fsfd, &flock_structure);
             free(blocks_table);
             return NO_FREE_BLOCKS;
@@ -538,11 +559,12 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     unsigned long number_of_flocks = number_of_blocks_to_be_taken_by_file;
     struct flock * flock_structures = (struct flock *) malloc(sizeof(struct flock) * number_of_flocks);
     // czy zablokować dodatkowo wszystkie bloki danych, do których funkcja będzie zapisywać dane
+    printf("Czy blokowac bloki: %d, dla liczby blokow: %d\n", params.lock_blocks, number_of_flocks);
+    if (_get_blocks_numbers_taken_by_file(params.fsfd, file_inode->first_data_block, master_block_pointer,
+                                          params.for_each_record, params.additional_param, blocks_table) == -2) {
+        return -2;
+    }
     if (params.lock_blocks) {
-        if (_get_blocks_numbers_taken_by_file(params.fsfd, file_inode->first_data_block, master_block_pointer,
-                                              params.for_each_record, params.additional_param, blocks_table) == -2) {
-            return -2;
-        }
         _lock_file_blocks(params.fsfd, master_block_pointer, blocks_table, number_of_flocks, flock_structures);
     }
 
