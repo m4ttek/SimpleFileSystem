@@ -2,9 +2,12 @@
 #include <string.h>
 #include "CUnit/Basic.h"
 #include "CUnit/CUnit.h"
+#include "simplefs.h"
 
 /* Pointer to the file used by the tests. */
 static FILE* temp_file = NULL;
+
+int fsfd = -1;
 
 /* The suite initialization function.
  * Opens the temporary file used by the tests.
@@ -66,6 +69,32 @@ void testFREAD(void)
    }
 }
 
+void test_initfs() {
+    CU_ASSERT(0 == simplefs_init("testfs", 4096, 1024));
+}
+
+void test_openfs() {
+    CU_ASSERT(-1 == simplefs_openfs("fakefs"));
+    CU_ASSERT(-1 != (fsfd = simplefs_openfs("testfs")));
+}
+
+void test_creat() {
+    CU_ASSERT(OK == simplefs_creat("/testfile", fsfd));
+    CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile", fsfd));
+
+    CU_ASSERT(OK == simplefs_creat("/testfile1", fsfd));
+    CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile", fsfd));
+    CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile1", fsfd));
+}
+
+void test_unlink() {
+    CU_ASSERT(OK == simplefs_unlink("/testfile", fsfd));
+    CU_ASSERT(FILE_DOESNT_EXIST == simplefs_unlink("/testfile", fsfd));
+
+    CU_ASSERT(OK == simplefs_unlink("/testfile1", fsfd));
+    CU_ASSERT(FILE_DOESNT_EXIST == simplefs_unlink("/testfile", fsfd));
+    CU_ASSERT(FILE_DOESNT_EXIST == simplefs_unlink("/testfile1", fsfd));
+}
 
 int main()
 {
@@ -85,7 +114,11 @@ int main()
    /* add the tests to the suite */
    /* NOTE - ORDER IS IMPORTANT - MUST TEST fread() AFTER fprintf() */
    if ((NULL == CU_add_test(pSuite, "test of fprintf()", testFPRINTF)) ||
-       (NULL == CU_add_test(pSuite, "test of fread()", testFREAD)))
+       (NULL == CU_add_test(pSuite, "test of fread()", testFREAD)) ||
+       (NULL == CU_add_test(pSuite, "test of simplefs_init", test_initfs)) ||
+       (NULL == CU_add_test(pSuite, "test of simplefs openfs", test_openfs)) ||
+       (NULL == CU_add_test(pSuite, "test of simplefs creat", test_creat)) ||
+       (NULL == CU_add_test(pSuite, "test of simplefs unlink", test_unlink)))
    {
       CU_cleanup_registry();
       return CU_get_error();

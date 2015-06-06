@@ -51,6 +51,7 @@ int munmap_enhanced(void *addr, size_t length, unsigned delta) {
  */
 master_block get_initial_master_block(unsigned block_size, unsigned number_of_blocks) {
     master_block masterblock;
+    memset(&masterblock, 0, sizeof(master_block));
     printf("Setting block size to %d\n", block_size);
     masterblock.block_size = block_size;
     masterblock.number_of_blocks = number_of_blocks;
@@ -226,13 +227,13 @@ inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* 
             file_signature* signature = (file_signature*) (dir_block->data + i * sizeof(char));
             if(strcmp(name, signature->name) == 0) {
                 //calculate number of inode table block, where we'll find the right node
-                long block_to_read = signature->inode_no / masterblock->block_size;
+                long block_to_read = signature->inode_no * sizeof(inode) / masterblock->block_size;
                 //zapameitujemy numer inode w tablicy inodow
                 *inode_no = signature->inode_no;
                 printf("%lu", signature->inode_no);
                 block* inode_block = _read_block(fd, block_to_read, masterblock->first_inode_table_block, masterblock->block_size);
                 inode* result_inode = malloc(sizeof(inode));
-                memcpy(result_inode, inode_block, sizeof(inode) * (signature->inode_no % masterblock->block_size));
+                memcpy(result_inode, inode_block->data + ((signature->inode_no * sizeof(inode)) % masterblock->block_size), sizeof(inode));
                 free(dir_block);
                 free(inode_block);
                 return result_inode;
@@ -272,7 +273,7 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
         path_part[i] = '\0';
         inode* new_inode = _get_inode_in_dir(fd, current_inode, path_part, masterblock, inode_no); //inode_no sie nie zmieni jak sie okaze ze path_part nie jest juz katalogiem
         free(current_inode);
-        if(new_inode == NULL) {
+        if(new_inode == NULL || new_inode->type == INODE_EMPTY) {
             free(path_part);
             return NULL;
         }
@@ -412,7 +413,7 @@ inode * _load_inode_from_file_structure(initialized_structures * initialized_str
 int _get_blocks_numbers_taken_by_file(int fsfd, unsigned long first_block_no, master_block * master_block_pointer,
                                       int (*for_each_record)(void*, int, void*), void * additional_param, unsigned long * blocks_table) {
     printf("\n**** _get_blocks_numbers_taken_by_file ****\n");
-    printf("Pierwszy blok: %u\n", blocks_table[0]);
+    //printf("Pierwszy blok: %u\n", blocks_table[0]);
 
     block * block_pointer = NULL;
     int i = 0;
@@ -499,7 +500,8 @@ void _save_buffer_to_file(initialized_structures * initialized_structures_pointe
             write(params->fsfd, &block_number, sizeof(unsigned long));
         } else {
             // zapisanie zera jako następny numer bloku
-            write(params->fsfd, 0, sizeof(unsigned long));
+            unsigned long zero = 0;
+            write(params->fsfd, &zero, sizeof(unsigned long));
         }
     }
 }
@@ -560,8 +562,9 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
         // wyszukanie nowych bloków danych
         unsigned int number_of_free_blocks = number_of_blocks_to_be_taken_by_file - number_of_all_taken_blocks_by_file;
         printf("\n\n************\nLiczba wszystkich blokow zajmowanych przez plik: %d, liczba blokow do zajecia: %d\n\n", number_of_all_taken_blocks_by_file, number_of_blocks_to_be_taken_by_file);
+        //nie wiem czemu tak
         if (_find_free_blocks(params.fsfd, initialized_structures_pointer, number_of_free_blocks,
-                              blocks_table + (number_of_all_taken_blocks_by_file * sizeof(unsigned long))) == NO_FREE_BLOCKS) {
+                              blocks_table + number_of_all_taken_blocks_by_file) == NO_FREE_BLOCKS) {
             printf("zle!");
             _unblock_first_free_block(params.fsfd, &flock_structure);
             free(blocks_table);
@@ -622,7 +625,7 @@ master_block* _get_master_block(int fd) {
  * od nazwy pliku (folderu), który ma być utworzony
  */
 char* _get_path_for_file(char* full_path) {
-    char* path = malloc(strlen(full_path) * sizeof(char));
+    char* path = malloc(strlen(full_path) * sizeof(char) + 1);
     strcpy(path, full_path);
     int i;
     for(i = strlen(path) - 1; i > 0; i--) {
@@ -737,7 +740,12 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
         return NUMBER_OF_BLOCKS_ZERO;
     }
 
-    int fd = open(path, O_RDWR | O_CREAT, 0644);
+    int fd = open(path, O_RDONLY, 0644);
+    if(fd != -1) {
+        return FILE_ALREADY_EXISTS;
+    }
+
+    fd = open(path, O_RDWR | O_CREAT, 0644);
     if(fd == -1) {
         return HOST_FILE_ACCESS_ERROR;
     }
@@ -859,7 +867,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     }
     structures->master_block_pointer->number_of_free_blocks += blocks_freed;
     //mark inode as empty
-    structures->inode_table[inode_no].type = 'E';
+    structures->inode_table[inode_no].type = INODE_EMPTY;
 
     _unlock_lock_file(structures->master_block_pointer, fsfd);
     _unlock_lock_inode(structures->master_block_pointer, fsfd);
@@ -1060,6 +1068,7 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
         int fd = simplefs_open(path, READ_AND_WRITE, fsfd);
         write_params_value.fd = fd;
         file_signature fs;
+        memset(&fs, 0, sizeof(file_signature));
         strcpy(fs.name, file_name);
         fs.inode_no = inode_no;
         write_params_value.data = &fs;
