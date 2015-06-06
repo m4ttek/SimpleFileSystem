@@ -237,7 +237,7 @@ inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* 
         printf("finding dir");
         for(i = 0; i <= masterblock->block_size - sizeof(file_signature); i += sizeof(file_signature)) {
             file_signature* signature = (file_signature*) (dir_block->data + i * sizeof(char));
-            if(strcmp(name, signature->name) == 0) {
+            if(strcmp(name, signature->name) == 0 && signature->inode_no != 0) {
                 //calculate number of inode table block, where we'll find the right node
                 long block_to_read = signature->inode_no * sizeof(inode) / masterblock->block_size;
                 //zapameitujemy numer inode w tablicy inodow
@@ -438,7 +438,8 @@ int _get_blocks_numbers_taken_by_file(int fsfd, unsigned long first_block_no, ma
         if (for_each_record != NULL && for_each_record(block_pointer, master_block_pointer->block_size, additional_param) == 0) {
             return -2;
         }
-        blocks_table[i++] = block_no = block_pointer->next_data_block;
+        blocks_table[i++] = block_no;
+        block_no = block_pointer->next_data_block;
         printf("nastepny blok danych: %u\n", block_no);
     } while (block_pointer->next_data_block != 0);
     printf("Wyjscie z **** _get_blocks_numbers_taken_by_file ****\n");
@@ -794,13 +795,17 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
     root_inode.type = INODE_DIR;
     write(fd, &root_inode, sizeof(inode));
 
+    //insert .lock inode
+    inode lock_inode;
+    memset(&lock_inode, 0, sizeof(inode));
+    strcpy(lock_inode.filename, ".lock");
+    lock_inode.type = INODE_FILE;
+    write(fd, &lock_inode, sizeof(inode));
+
     //allocate space for data
     lseek(fd, fs_size - 1, SEEK_SET);
     write(fd, "\0", 1);
     printf("Allocated %d bytes\n", fs_size);
-
-    //create .lock file
-    simplefs_creat("/.lock", fd);
 
     close(fd);
     return 0;
@@ -868,6 +873,17 @@ int simplefs_open(char *name, int mode, int fsfd) { //Michal
 }
 
 int simplefs_unlink(char *name, int fsfd) { //Michal
+    //extract file name
+    int path_length = strlen(name);
+    if(path_length < 1) {
+        return FILE_DOESNT_EXIST;
+    }
+    int filename_position = path_length - 1;
+    while(name[filename_position] != '/') {
+        if(--filename_position < 0) {
+            return FILE_DOESNT_EXIST;
+        }
+    }
     initialized_structures* structures = _initialize_structures(fsfd, 1);
     _lock_lock_inode(structures->master_block_pointer, fsfd);
     _lock_lock_file(structures->master_block_pointer, fsfd);
@@ -905,7 +921,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     for(i = 0;;i++) {
         file_signature signature;
         simplefs_read(dir_fd, (char*) &signature, sizeof(file_signature), fsfd);
-        if(strcmp(signature.name, name) == 0 && signature.inode_no != 0) {
+        if(strcmp(signature.name, name + filename_position + 1) == 0 && signature.inode_no != 0) {
             //clear
             signature.inode_no = 0;
             simplefs_lseek(dir_fd, SEEK_CUR, -sizeof(file_signature), fsfd);
@@ -1179,7 +1195,7 @@ int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
     unsigned long data_read = 0;
     block * current_block;
     while (current_block_number != 0 && data_read < len) { //dopoki mozna czytac
-        current_block = _read_block(fd, current_block_number, masterblock->data_start_block, masterblock->block_size);
+        current_block = _read_block(fsfd, current_block_number, masterblock->data_start_block, masterblock->block_size);
         unsigned position_in_read_block = 0;
         if (current_position < position) {
             position_in_read_block = position - current_position;
