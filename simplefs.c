@@ -275,10 +275,10 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
         return _get_root_inode(fd, masterblock);
     }
     unsigned path_index = 1;
-    unsigned i = 0;
     char* path_part = malloc(strlen(path) * sizeof(char));
     inode* current_inode = _get_root_inode(fd, masterblock);
     while(1) {
+        unsigned i = 0;
         while(path[path_index] != '/' && path[path_index] != '\0') {
             path_part[i++] = path[path_index++];
         }
@@ -293,6 +293,7 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
         if(path[path_index] == '\0') {
             break;
         }
+        path_index++;
     }
     free(path_part);
     return current_inode;
@@ -1125,6 +1126,12 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
     }
     strncpy(file_name, name + path_length, full_path_length - path_length);
     path[path_length] = '\0';
+
+    //for files deeper than in the root dir, remove the slash at the end
+    if(path_length != 1 && path[path_length-1] == '/') {
+        path[path_length-1] = '\0';
+    }
+
     file_name[file_name_length] = '\0';
     printf("%d", path_length);
     printf("%s\n", path);

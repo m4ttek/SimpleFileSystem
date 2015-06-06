@@ -107,7 +107,11 @@ void test_unlink() {
     CU_ASSERT(FILE_DOESNT_EXIST == simplefs_unlink("/testfile1", fsfd));
 
     //unlink dir
+    CU_ASSERT(DIR_NOT_EMPTY == simplefs_unlink("/testdir", fsfd));
+    //right, need to remove all the files in the dir
+    CU_ASSERT(OK == simplefs_unlink("/testdir/file_in_dir", fsfd));
     CU_ASSERT(OK == simplefs_unlink("/testdir", fsfd));
+
     CU_ASSERT(FILE_DOESNT_EXIST == simplefs_unlink("/testdir", fsfd));
 }
 
