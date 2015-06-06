@@ -327,13 +327,14 @@ int _unblock_first_free_block(int fd, struct flock * fl) {
 }
 
 /**
- * Wyszukuje dostępne wolne bloki, nie jest cross-process-safe.
+ * Wyszukuje dostępne wolne bloki, nie jest cross-process-safe. Zwraca pierwszy przetwarzany number bloku dla pliku lub
+ * jaroslaw_błąd (NO_FREE_BLOCKS).
  *
  * @param initialized_structures_pointer wskaźnik na zainicjalizowane struktury systemu plików
  * @param number_of_free_blocks liczba wolnych bloków do wyszukania
  * @param free_blocks tablica, gdzie zostaną zapisane identyfikatory znalezionych bloków
  */
-int _find_free_blocks(int fsfd, initialized_structures * initialized_structures_pointer, unsigned long number_of_free_blocks,
+long _find_free_blocks(int fsfd, initialized_structures * initialized_structures_pointer, unsigned long number_of_free_blocks,
                       unsigned long * free_blocks) {
     printf("In _find_free_blocks. free blocks = %d\n", number_of_free_blocks);
     master_block * master_block = initialized_structures_pointer->master_block_pointer;
@@ -396,7 +397,7 @@ int _find_free_blocks(int fsfd, initialized_structures * initialized_structures_
         printf("zakonczenie wyszukiwania wolnych blokow!\n");
     }
     printf("wyjscie z find free blocks!\n");
-    return 0;
+    return (long) saved_first_free_block_number;
 }
 
 /**
@@ -575,12 +576,15 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
         unsigned int number_of_free_blocks = number_of_blocks_to_be_taken_by_file - number_of_all_taken_blocks_by_file;
         printf("\n\n************\nLiczba wszystkich blokow zajmowanych przez plik: %d, liczba blokow do zajecia: %d\n\n", number_of_all_taken_blocks_by_file, number_of_blocks_to_be_taken_by_file);
         //nie wiem czemu tak
-        if (_find_free_blocks(params.fsfd, initialized_structures_pointer, number_of_free_blocks,
-                              blocks_table + number_of_all_taken_blocks_by_file) == NO_FREE_BLOCKS) {
+        long first_operated_block = _find_free_blocks(params.fsfd, initialized_structures_pointer, number_of_free_blocks,
+                          blocks_table + number_of_all_taken_blocks_by_file);
+        if (first_operated_block == NO_FREE_BLOCKS) {
             printf("zle!");
             _unblock_first_free_block(params.fsfd, &flock_structure);
             free(blocks_table);
             return NO_FREE_BLOCKS;
+        } else if (file_inode->first_data_block == 0) {
+            file_inode->first_data_block = first_operated_block;
         }
     }
 
