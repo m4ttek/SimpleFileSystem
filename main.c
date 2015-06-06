@@ -58,5 +58,15 @@ int main(int argc, char ** argv) {
                 break;
         }
     }
+    int fdfs = simplefs_openfs("filesystem");
+    simplefs_creat("/a.txt", fdfs);
+    int fd = simplefs_open("/a.txt", READ_AND_WRITE, fdfs);
+    //printf("Result of simplefs_open %d\n", fd);
+    //printf("Wrint to file result %d", simplefs_write(fd, "adam to glupi programista", 15, fdfs));
+    char result[20];
+    printf("Readig from file %d", simplefs_read(fd, result, 10, fdfs));
+    result[10] = '\0';
+    printf("Read %s", result);
+
     return 0;
 }
