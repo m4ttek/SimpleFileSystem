@@ -1214,7 +1214,7 @@ int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
         free(current_block);
         current_block_number = current_block->next_data_block;
     }
-    file->position += data_read;
+    file_pointer->position += data_read;
     _uninitilize_structures(initialized_structures_pointer);
     return data_read;
 }
