@@ -1203,11 +1203,11 @@ int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
         } else {
             position_in_read_block = 0;
         }
-        if (data_read + block_data_size <= len ) {
-            memcpy(buf + data_read, current_block->data, block_data_size);
+        if (data_read + (block_data_size - position_in_read_block) <= len ) {
+            memcpy(buf + data_read, current_block->data + position_in_read_block, block_data_size - position_in_read_block);
             data_read += block_data_size;
         } else {
-            memcpy(buf + data_read, current_block->data, len - data_read);
+            memcpy(buf + data_read, current_block->data + position_in_read_block, len - data_read);
             data_read = len;
         }
         free(current_block->data);
