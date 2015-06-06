@@ -417,7 +417,7 @@ inode * _load_inode_from_file_structure(initialized_structures * initialized_str
     if (file_pointer == NULL) {
         return NULL;
     }
-    return initialized_structures_pointer->inode_table + (sizeof(inode) * file_pointer->inode_no);
+    return initialized_structures_pointer->inode_table + file_pointer->inode_no;
 }
 
 /**
@@ -741,7 +741,7 @@ int _check_duplicate_file_names_in_block(block* data_block, int block_size, void
         printf("Adding %d to signature\n", sizeof(file_signature));
         signature++;
         if(signature->inode_no == 0) {
-            break;
+            continue;
         }
     }
     printf("wychodze");
@@ -893,6 +893,22 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     if(file_inode == NULL) {
         return FILE_DOESNT_EXIST;
     }
+
+    //jeśli to katalog, tu sprawdź, czy nie ma w nim plików!
+    if(file_inode->type == INODE_DIR) {
+        int file_fd = simplefs_open(name, READ_AND_WRITE, fsfd);
+        int bytes_read = 0;
+        while(1) {
+            file_signature signature;
+            bytes_read = simplefs_read(file_fd, &signature, sizeof(file_signature), fsfd);
+            if(bytes_read < sizeof(file_signature)) {
+                break;
+            }
+            if(signature.inode_no != 0) {
+                return DIR_NOT_EMPTY;
+            }
+        }
+    }
     //zwolnienie bloków
     unsigned long blocks_freed = 0;
     unsigned long current_block_no = file_inode->first_data_block;
@@ -951,7 +967,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
 }
 
 int simplefs_mkdir(char *name, int fsfd) { //Michal
-    return _create_file_or_dir(name, READ_AND_WRITE, fsfd, TRUE);
+    return _create_file_or_dir(name, fsfd, TRUE);
     //separate new dir name from the path
     /*char* path = _get_path_for_new_file(name);
     initialized_structures* structures = _initialize_structures(fsfd, 1);

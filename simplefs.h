@@ -84,6 +84,7 @@ int simplefs_unlink(char *name, int fsfd);
 //Zwracane
 #define OK 0
 #define FILE_DOESNT_EXIST -1
+#define DIR_NOT_EMPTY
 
 /**
  * Tworzy katalog o pełnej ścieżce, gdzie kolejne katalogi są oddzielone znakiem ‘/’,  różne od ‘.’ oraz ‘..’

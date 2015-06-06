@@ -70,7 +70,8 @@ void testFREAD(void)
 }
 
 void test_initfs() {
-    CU_ASSERT(0 == simplefs_init("testfs", 4096, 1024));
+   // CU_ASSERT(0 == simplefs_init("testfs", 4096, 1024));
+   simplefs_init("testfs", 4096, 1024);
 }
 
 void test_openfs() {
@@ -80,11 +81,21 @@ void test_openfs() {
 
 void test_creat() {
     CU_ASSERT(OK == simplefs_creat("/testfile", fsfd));
-    //CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile", fsfd));
+    CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile", fsfd));
 
     CU_ASSERT(OK == simplefs_creat("/testfile1", fsfd));
-    /*CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile", fsfd));
-    CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile1", fsfd));*/
+    CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile", fsfd));
+    CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile1", fsfd));
+}
+
+void test_mkdir() {
+    CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_mkdir("/testfile", fsfd));
+    CU_ASSERT(OK == simplefs_mkdir("/testdir", fsfd));
+}
+
+void test_create_file_in_dir() {
+    CU_ASSERT(OK == simplefs_creat("/testdir/file_in_dir", fsfd));
+    CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testdir/file_in_dir", fsfd));
 }
 
 void test_unlink() {
@@ -94,6 +105,10 @@ void test_unlink() {
     CU_ASSERT(OK == simplefs_unlink("/testfile1", fsfd));
     CU_ASSERT(FILE_DOESNT_EXIST == simplefs_unlink("/testfile", fsfd));
     CU_ASSERT(FILE_DOESNT_EXIST == simplefs_unlink("/testfile1", fsfd));
+
+    //unlink dir
+    CU_ASSERT(OK == simplefs_unlink("/testdir", fsfd));
+    CU_ASSERT(FILE_DOESNT_EXIST == simplefs_unlink("/testdir", fsfd));
 }
 
 int main()
@@ -118,6 +133,8 @@ int main()
        (NULL == CU_add_test(pSuite, "test of simplefs_init", test_initfs)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs openfs", test_openfs)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs creat", test_creat)) ||
+       (NULL == CU_add_test(pSuite, "test of simplefs mkdir", test_mkdir)) ||
+       (NULL == CU_add_test(pSuite, "test of creating file in a directory", test_create_file_in_dir)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs unlink", test_unlink)))
    {
       CU_cleanup_registry();
