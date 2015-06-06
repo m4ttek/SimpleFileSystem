@@ -350,7 +350,7 @@ int _find_free_blocks(int fsfd, initialized_structures * initialized_structures_
         // zaznaczenie bloku jako zajętego
         printf("bitmap pointer %d\n", block_bitmap_pointer);
         char * bitmap_byte = block_bitmap_pointer + ((master_block->first_free_block_number / 8) * sizeof(char));
-        unsigned int bit_in_byte = master_block->first_free_block_number % sizeof(char);
+        unsigned int bit_in_byte = master_block->first_free_block_number % (sizeof(char) * 8);
         printf("bitmap byte evaluates to %d bit in byte %d\n", bitmap_byte, bit_in_byte);
         (*bitmap_byte) |= (1 << bit_in_byte);
 
@@ -640,9 +640,13 @@ char* _get_path_for_file(char* full_path) {
     char* path = malloc(strlen(full_path) * sizeof(char) + 1);
     strcpy(path, full_path);
     int i;
-    for(i = strlen(path) - 1; i > 0; i--) {
+    for(i = strlen(path) - 1; i >= 0; i--) {
         if(path[i] == '/') {
-            path[i] = '\0';
+            if(i == 0) {
+                path[i+1] = '\0';
+            } else {
+                path[i] = '\0';
+            }
             return path;
         }
     }
@@ -771,6 +775,11 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
     write(fd, &masterblock, sizeof(master_block));
     printf("Masterblock written\n");
 
+    //mark first block as taken
+    lseek(fd, masterblock.block_size, SEEK_SET);
+    char one = 0x01;
+    write(fd, &one, sizeof(char));
+
     //insert space for bitmap
     lseek(fd, (1 + masterblock.number_of_bitmap_blocks) * masterblock.block_size, SEEK_SET);
 
@@ -867,12 +876,16 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     //zwolnienie bloków
     unsigned long blocks_freed = 0;
     unsigned long current_block_no = file_inode->first_data_block;
+    unsigned long first_free_block = structures->master_block_pointer->first_free_block_number;
     while(current_block_no != 0) {
         unsigned long bitmap_block_no = current_block_no / (8 * structures->master_block_pointer->block_size);
         char bit_offset = current_block_no % (8 * structures->master_block_pointer->block_size);
         structures->block_bitmap_pointer[bitmap_block_no] &= ~(1 << bit_offset);
         block* current_block = _read_block(fsfd, current_block_no, structures->master_block_pointer->data_start_block,
                                             structures->master_block_pointer->block_size);
+        if(current_block_no < first_free_block) {
+            structures->master_block_pointer->first_free_block_number = current_block_no;
+        }
         current_block_no = current_block->next_data_block;
         blocks_freed++;
         free(current_block);
@@ -880,6 +893,34 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     structures->master_block_pointer->number_of_free_blocks += blocks_freed;
     //mark inode as empty
     structures->inode_table[inode_no].type = INODE_EMPTY;
+
+    //remove file signature from parent directory
+    char* dir_path = _get_path_for_file(name);
+    int dir_fd = simplefs_open(dir_path, READ_AND_WRITE, fsfd);
+    int i;
+    for(i = 0;;i++) {
+        file_signature signature;
+        simplefs_read(dir_fd, (char*) &signature, sizeof(file_signature), fsfd);
+        if(strcmp(signature.name, name) == 0 && signature.inode_no != 0) {
+            //clear
+            signature.inode_no = 0;
+            simplefs_lseek(dir_fd, SEEK_CUR, -sizeof(file_signature), fsfd);
+            write_params params;
+            params.data = (char*) &signature;
+            params.data_length = sizeof(file_signature);
+            params.fd = dir_fd;
+            params.file_offset = i * sizeof(file_signature);
+            params.fsfd = fsfd;
+            params.lock_blocks = 0;
+            params.additional_param = NULL;
+            params.for_each_record = NULL;
+            _write_unsafe(structures, params);
+            break;
+        }
+    }
+    free(dir_path);
+    unsigned long dir_inode_no;
+    inode* dir_inode = _get_inode_by_path(dir_path, structures->master_block_pointer, fsfd, &dir_inode_no);
 
     _unlock_lock_file(structures->master_block_pointer, fsfd);
     _unlock_lock_inode(structures->master_block_pointer, fsfd);
