@@ -1,11 +1,11 @@
 CC=gcc
 CFLAGS= -Wall -g -w
 LFLAGS= -lm
-TFLAGS= -lcunit
+TFLAGS= -lcunit -lm
 
 OBJS=simplefs.o main.o
 
-TEST_OBJS=tests.o
+TEST_OBJS=tests.o simplefs.o
 
 all: app tests
 
@@ -22,8 +22,8 @@ simplefs.o: simplefs.c
 	$(CC) $(CFLAGS) -c simplefs.c -o simplefs.o
 
 tests.o: tests.c
-	$(CC) $(CFLAGS) -c tests.c -o tests.o -lcunit
+	$(CC) $(CFLAGS) -c tests.c -o tests.o
 
 clean:
-	rm *.o 
+	rm *.o
 
