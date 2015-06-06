@@ -133,9 +133,13 @@ int simplefs_creat (char *name, int fsfd);
  * @param len - rozmiar bufora
  * @param fsfd - deskryptor do systemu plików
  *
- * @return {wczytana wilkosc} jesli wczytana wielkosc < len => koniec pliku,
+ * @return {wczytana wilkosc} jesli wczytana wielkosc < len => koniec pliku, {<0} bład (patrz niżej)
  */
 int simplefs_read(int fd, char *buf, int len, int fsfd);
+
+#define FILE_SYSTEM_ERROR -1
+//FD_NOT_FOUND -4 //zadeklarowane wyżej
+
 
 /**
  * Zapisuje z zawartość bufora o podanej długości do pliku określonego przez deskryptor

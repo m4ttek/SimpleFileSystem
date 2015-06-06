@@ -190,6 +190,18 @@ void* _read_block(int fd, long block_no, long block_offset, long block_size) {
     return block_read;
 }
 
+/**
+ * Funkcja czytająca z dysku dla danego bloku tylko jego następnik
+ * @return numer następnego bloku
+ */
+unsigned long _find_next_block(int fd, long block_no, long block_offset, long block_size) {
+    unsigned long next_block = 0;
+    lseek(fd, (block_no + block_offset) * block_size + block_size - sizeof(unsigned long), SEEK_SET);
+    //read data
+    read(fd, &next_block, sizeof(unsigned long));
+    return next_block;
+}
+
 void free_block_struct(block* bl) {
     free(bl->data);
     free(bl);
@@ -1100,12 +1112,54 @@ int simplefs_creat(char *name, int fsfd) { //Adam
 }
 
 int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
-    return -1;
+    initialized_structures * initialized_structures_pointer = _initialize_structures(fsfd, 1);
+    master_block * masterblock = initialized_structures_pointer->master_block_pointer;
+    if(initialized_structures_pointer == NULL) {
+        return FILE_SYSTEM_ERROR;
+    }
+    file * file_pointer = _get_file_by_fd(fd);
+    if(file_pointer == NULL) {
+        return FD_NOT_FOUND;
+    }
+    unsigned long position = file_pointer->position;
+    unsigned long current_block_number = _load_inode_from_file_structure(initialized_structures_pointer, file_pointer)->first_data_block;
+    unsigned long current_position = 0;
+    block t;
+    unsigned long block_data_size =  masterblock->block_size - sizeof(t.next_data_block); //realny rozmiar bloku
+    //przesuwamu sie przez dane które nasz position ignoruje
+    while(current_position + block_data_size <= position && current_block_number != 0) {
+        current_block_number = _find_next_block(fd, current_block_number,  masterblock->data_start_block, masterblock->block_size);
+        current_position += block_data_size;
+    }
+    unsigned long data_read = 0;
+    block * current_block;
+    while (current_block_number != 0 && data_read < len) { //dopoki mozna czytac
+        current_block = _read_block(fd, current_block_number, masterblock->data_start_block, masterblock->block_size);
+        unsigned position_in_read_block = 0;
+        if (current_position < position) {
+            position_in_read_block = position - current_position;
+            current_position = position;
+        } else {
+            position_in_read_block = 0;
+        }
+        if (data_read + block_data_size <= len ) {
+            memcpy(buf + data_read, current_block->data, block_data_size);
+            data_read += block_data_size;
+        } else {
+            memcpy(buf + data_read, current_block->data, len - data_read);
+            data_read = len;
+        }
+        free(current_block->data);
+        free(current_block);
+        current_block_number = current_block->next_data_block;
+    }
+    _uninitilize_structures(initialized_structures_pointer);
+    return data_read;
 }
 
 int simplefs_write(int fd, char *buf, int len, int fsfd) { //Mateusz
     initialized_structures * initialized_structures_pointer = _initialize_structures(fsfd, 1);
-    if (initialized_structures_pointer != NULL) {
+    if (initialized_structures_pointer == NULL) {
         printf("Blad");
         return -1;
     }
@@ -1134,7 +1188,7 @@ int simplefs_write(int fd, char *buf, int len, int fsfd) { //Mateusz
 
 int simplefs_lseek(int fd, int whence, int offset, int fsfd) { //Mateusz
     initialized_structures * initialized_structures_pointer = _initialize_structures(fsfd, 1);
-    if (initialized_structures_pointer != NULL) {
+    if (initialized_structures_pointer == NULL) {
         printf("Blad");
         return -1;
     }
