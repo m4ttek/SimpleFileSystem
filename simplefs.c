@@ -1231,9 +1231,13 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
         write_params_value.additional_param = file_name;
         int write_result = _write_unsafe(is, write_params_value);
         if (write_result == NO_FREE_BLOCKS) {
-            // TODO by ADAM
+            result = NO_FREE_BLOCKS;
         } else if(write_result == -2) {
             result = FILE_ALREADY_EXISTS;
+        }
+        //rolback got inode 
+        if(result < 0) {
+            _mark_inode_as_empty(is, inode_no);
         }
         simplefs_close(fd);
     } while( 0 );
