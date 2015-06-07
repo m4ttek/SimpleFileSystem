@@ -86,7 +86,11 @@ void test_creat() {
 
     CU_ASSERT(OK == simplefs_creat("/testfile1", fsfd));
     CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile", fsfd));
-    CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile1", fsfd));
+    int response;
+    CU_ASSERT(FILE_ALREADY_EXISTS == (response = simplefs_creat("/testfile1", fsfd)));
+    if(response != FILE_ALREADY_EXISTS) {
+        printf("Niedobrze");
+    }
 }
 
 void test_mkdir() {

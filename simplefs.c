@@ -757,7 +757,7 @@ int _check_duplicate_file_names_in_block(block* data_block, int block_size, void
     file_signature* signature = (file_signature*) data_block->data;
     printf("in check_duplicat file names. data_block->data = %X, liczba sygnatur na plik:%d\n", data_block->data, block_size / sizeof(file_signature));
     int i;
-    for(i = 0; i < block_size / sizeof(file_signature); i++) {
+    for(i = 0; i <= block_size / sizeof(file_signature); i++) {
         printf("wchodze");
         printf("signature node: %d, signature name %s\n", signature->inode_no, signature->name);
         if(signature->inode_no == 0) {
@@ -1213,7 +1213,10 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
         new_file.size = 0;
         new_file.first_data_block = 0;
         unsigned long inode_no = _insert_new_inode(&new_file, is, fsfd);
-        printf("Inserted new inode: %lu\n", inode_no);
+        if(inode_no == 0) {
+            return NO_FREE_INODES;
+        }
+        printf("Inserted new inofde: %lu\n", inode_no);
         path[path_length] = '\0'; //przerobic katalog na plik
         write_params write_params_value;
         write_params_value.fsfd = fsfd;
@@ -1235,7 +1238,7 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
         } else if(write_result == -2) {
             result = FILE_ALREADY_EXISTS;
         }
-        //rolback got inode 
+        //rolback got inode
         if(result < 0) {
             _mark_inode_as_empty(is, inode_no);
         }

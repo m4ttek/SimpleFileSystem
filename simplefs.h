@@ -126,6 +126,7 @@ int simplefs_creat (char *name, int fsfd);
 #define DIR_DOESNT_EXIST -3
 #define NAME_TOO_LONG -4
 #define NO_FREE_BLOCKS -5
+#define NO_FREE_INODES -6
 
 /**
  * 	Czyta plik do podanego bufora o podanej długości.
