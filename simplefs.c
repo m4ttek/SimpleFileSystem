@@ -912,7 +912,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
                 return DIR_NOT_EMPTY;
             }
         }
-        simplefs_close(file_fd);
+        //simplefs_close(file_fd);
     }
     //zwolnienie bloków
     unsigned long blocks_freed = 0;
@@ -974,7 +974,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
         _try_lock_lock_inode(structures->master_block_pointer, fsfd);
     }
     _uninitilize_structures(structures);
-    simplefs_close(dir_fd);
+    //simplefs_close(dir_fd);
     return OK;
 }
 
@@ -1274,6 +1274,7 @@ int simplefs_write(int fd, char *buf, int len, int fsfd) { //Mateusz
     write_params_structure.fd = fd;
     write_params_structure.lock_blocks = 0;
     write_params_structure.file_offset = file_pointer->position;
+    write_params_structure.for_each_record = NULL;
     int result = _write_unsafe(initialized_structures_pointer, write_params_structure);
 
     _unlock_lock_file(initialized_structures_pointer->block_bitmap_pointer, fsfd);

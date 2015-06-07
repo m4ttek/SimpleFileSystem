@@ -7,8 +7,6 @@
 /* Pointer to the file used by the tests. */
 static FILE* temp_file = NULL;
 
-master_block* initial_masterblock;
-
 int fsfd = -1;
 
 /* The suite initialization function.
@@ -79,7 +77,6 @@ void test_initfs() {
 void test_openfs() {
     CU_ASSERT(-1 == simplefs_openfs("fakefs"));
     CU_ASSERT(-1 != (fsfd = simplefs_openfs("testfs")));
-    initial_masterblock = _get_master_block(fsfd);
 }
 
 void test_creat() {
@@ -89,10 +86,6 @@ void test_creat() {
     CU_ASSERT(OK == simplefs_creat("/testfile1", fsfd));
     CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile", fsfd));
     CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile1", fsfd));
-
-    master_block* masterblock = _get_master_block(fsfd);
-    CU_ASSERT(initial_masterblock->number_of_free_blocks == masterblock->number_of_free_blocks + 1);
-    free(masterblock);
 }
 
 void test_mkdir() {
@@ -103,16 +96,10 @@ void test_mkdir() {
 void test_create_file_in_dir() {
     CU_ASSERT(OK == simplefs_creat("/testdir/file_in_dir", fsfd));
     CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testdir/file_in_dir", fsfd));
-
-    master_block* masterblock = _get_master_block(fsfd);
-    CU_ASSERT(initial_masterblock->number_of_free_blocks == masterblock->number_of_free_blocks + 2);
-    free(masterblock);
 }
 
 void test_unlink() {
     CU_ASSERT(OK == simplefs_unlink("/testfile", fsfd));
-    master_block* masterblock = _get_master_block(fsfd);
-    CU_ASSERT(initial_masterblock->first_free_inode == masterblock->first_free_inode);
     CU_ASSERT(FILE_DOESNT_EXIST == simplefs_unlink("/testfile", fsfd));
 
     CU_ASSERT(OK == simplefs_unlink("/testfile1", fsfd));
@@ -126,6 +113,29 @@ void test_unlink() {
     CU_ASSERT(OK == simplefs_unlink("/testdir", fsfd));
 
     CU_ASSERT(FILE_DOESNT_EXIST == simplefs_unlink("/testdir", fsfd));
+}
+
+/*
+ * Funkcje testujące należące do suite 2.
+ */
+void test_write() {
+    simplefs_init("testfs2", 4096, 1024);
+    unsigned long data_block_start = 1 + ceil((double) 1024 / (4096 * 8)) + ceil((double) 1024 / floor((double) 4096 / sizeof(inode)));
+    CU_ASSERT(-1 != (fsfd = simplefs_openfs("testfs2")));
+
+    int fd = -1;
+    CU_ASSERT(OK == simplefs_creat("/testfile", fsfd));
+    // TODO - nie działa open!!
+    CU_ASSERT(0 < (fd = simplefs_open("/testfile", WRITE_MODE, fsfd)));
+    char * buf = "testing file save";
+    CU_ASSERT(OK == simplefs_write(fd, buf, 17, fsfd));
+    printf("Data block byte start = %d\n", (1 + data_block_start) * 4096 );
+    block * block_pointer = (block *) _read_block(fsfd, 1, data_block_start, 4096);
+
+    CU_ASSERT('t' == block_pointer->data[0]);
+
+    //clean
+    CU_ASSERT(OK == simplefs_unlink("/testfile", fsfd));
 }
 
 int main()
@@ -157,6 +167,20 @@ int main()
       CU_cleanup_registry();
       return CU_get_error();
    }
+
+    /* add a suite to the registry */
+    pSuite = CU_add_suite("Suite_2", init_suite1, clean_suite1);
+    if (NULL == pSuite) {
+        CU_cleanup_registry();
+        return CU_get_error();
+    }
+
+    /* add the tests to the suite 2 */
+    if ((NULL == CU_add_test(pSuite, "test of simplefs write", test_write)))
+    {
+        CU_cleanup_registry();
+        return CU_get_error();
+    }
 
    /* Run all tests using the CUnit Basic interface */
    CU_basic_set_mode(CU_BRM_VERBOSE);
