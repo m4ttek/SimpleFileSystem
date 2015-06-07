@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "CUnit/Basic.h"
 #include "CUnit/CUnit.h"
@@ -113,6 +114,7 @@ void test_unlink() {
     CU_ASSERT(OK == simplefs_unlink("/testdir", fsfd));
 
     CU_ASSERT(FILE_DOESNT_EXIST == simplefs_unlink("/testdir", fsfd));
+
 }
 
 /*
@@ -136,6 +138,22 @@ void test_write() {
 
     //clean
     CU_ASSERT(OK == simplefs_unlink("/testfile", fsfd));
+}
+
+void test_create_100_files() {
+    /*simplefs_init("testfs3", 4096, 1024);
+    int fsfd;
+    CU_ASSERT(-1 != (fsfd = simplefs_openfs("testfs3")));
+    char buf[100];
+    int i;
+    for(i = 0; i < 1; i++) {
+        sprintf(buf,"/%d",i);
+        int result = simplefs_creat(buf, fsfd);
+        if(result != OK) {
+            printf("Nie poszło");
+        }
+        CU_ASSERT(OK == result);
+    }*/
 }
 
 int main()
@@ -162,7 +180,8 @@ int main()
        (NULL == CU_add_test(pSuite, "test of simplefs creat", test_creat)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs mkdir", test_mkdir)) ||
        (NULL == CU_add_test(pSuite, "test of creating file in a directory", test_create_file_in_dir)) ||
-       (NULL == CU_add_test(pSuite, "test of simplefs unlink", test_unlink)))
+       (NULL == CU_add_test(pSuite, "test of simplefs unlink", test_unlink)) ||
+       (NULL == CU_add_test(pSuite, "test of creating 100 files", test_create_100_files)))
    {
       CU_cleanup_registry();
       return CU_get_error();
@@ -181,6 +200,20 @@ int main()
         CU_cleanup_registry();
         return CU_get_error();
     }
+
+    /* add a suite to the registry */
+    /*pSuite = CU_add_suite("Suite_3", init_suite1, clean_suite1);
+    if (NULL == pSuite) {
+        CU_cleanup_registry();
+        return CU_get_error();
+    }*/
+
+    /* add the tests to the suite 2 */
+    /*if ((NULL == CU_add_test(pSuite, "test of creating 100 files", test_create_100_files)));
+    {
+        CU_cleanup_registry();
+        return CU_get_error();
+    }*/
 
    /* Run all tests using the CUnit Basic interface */
    CU_basic_set_mode(CU_BRM_VERBOSE);
