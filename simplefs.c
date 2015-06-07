@@ -944,7 +944,12 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     //zwolnienie bloków
     unsigned long blocks_freed = 0;
     unsigned long current_block_no = file_inode->first_data_block;
+    unsigned long zero = 0;
     while(current_block_no != 0) {
+        //update no of free blocks in mb
+        structures->master_block_pointer->number_of_free_blocks++;
+
+        //free block in bitmap
         unsigned long bitmap_block_no = current_block_no / (8 * structures->master_block_pointer->block_size);
         char bit_offset = current_block_no % (8 * structures->master_block_pointer->block_size);
         structures->block_bitmap_pointer[bitmap_block_no] &= ~(1 << bit_offset);
@@ -954,8 +959,15 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
             //update first free block no
             structures->master_block_pointer->first_free_block_number = current_block_no;
         }
+        unsigned long old_block_no = current_block_no;
         current_block_no = current_block->next_data_block;
+
+        //clear next data block pointer
+        lseek(fsfd, (structures->master_block_pointer->data_start_block + old_block_no + 1) *
+                        structures->master_block_pointer->block_size - sizeof(unsigned long), SEEK_SET);
+        write(fsfd, &zero, sizeof(unsigned long));
         blocks_freed++;
+
         free(current_block);
     }
     structures->master_block_pointer->number_of_free_blocks += blocks_freed;

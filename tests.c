@@ -72,7 +72,7 @@ void testFREAD(void)
 
 void test_initfs() {
    // CU_ASSERT(0 == simplefs_init("testfs", 4096, 1024));
-   simplefs_init("testfs", 4096, 1024);
+   simplefs_init("testfs", 4096, 16);
 }
 
 void test_openfs() {
