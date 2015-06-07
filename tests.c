@@ -134,14 +134,15 @@ void test_write() {
     char * buf = "testing file save";
     printf("\n\nPierwszy zapis do pliku\n\n");
     CU_ASSERT(OK == simplefs_write(fd, buf, 17, fsfd));
-    block * block_pointer = (block *) _read_block(fsfd, 1, data_block_start, 4096);
+    block * block_pointer = (block *) _read_block(fsfd, 2, data_block_start, 4096);
 
     CU_ASSERT('t' == block_pointer->data[0]);
 
     // append do istniejącego asserta
     printf("\n\nDrugi zapis do pliku\n\n");
     CU_ASSERT(OK == simplefs_write(fd, buf, 17, fsfd));
-    block_pointer = (block *) _read_block(fsfd, 1, data_block_start, 4096);
+    block_pointer = (block *) _read_block(fsfd, 2, data_block_start, 4096);
+    CU_ASSERT('t' == block_pointer->data[0]);
     CU_ASSERT('t' == block_pointer->data[17]);
     /*
     // append na tyle długi żeby przeszedł na drugi blok
@@ -170,7 +171,7 @@ void test_write() {
     }*/
 
     //clean
-    CU_ASSERT(OK == simplefs_unlink("/testfile", fsfd));
+    //CU_ASSERT(OK == simplefs_unlink("/testfile", fsfd));
 }
 
 void test_create_100_files() {

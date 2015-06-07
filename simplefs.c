@@ -488,6 +488,8 @@ void _unlock_file_blocks(int fsfd, struct flock * flock_structures, unsigned lon
  */
 void _save_buffer_to_file(initialized_structures * initialized_structures_pointer, write_params * params,
                           unsigned long * blocks_table, unsigned long real_file_offset) {
+    printf("\n****** save buffer to file *******\n");
+    printf("params->data length = %d, file_offset =  %d\n", params->data_length, params->file_offset);
     master_block * master_block_pointer = initialized_structures_pointer->master_block_pointer;
     unsigned int real_block_size = master_block_pointer->block_size - sizeof(long);
     unsigned long block_to_start = real_file_offset / real_block_size;
@@ -556,7 +558,7 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     if (params.file_offset < 0) {
         real_file_offset = file_size;
     } else {
-        real_file_offset = (unsigned int) params.file_offset;
+        real_file_offset = file_structure->position;
     }
 
     // wyznaczenie ile aktualnie zajmuje plik, a ile może zajmować po operacji zapisu
@@ -617,6 +619,10 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
 
     // operacja zapisu do pliku
     _save_buffer_to_file(initialized_structures_pointer, &params, blocks_table, real_file_offset);
+
+    // zwiększenie pozycji w strukturze file
+    file_structure->position += params.data_length;
+    printf("Nowa pozycja w strukturze file: %d", file_structure->position);
 
     // odblokowanie zablokowanych bloków danych (jeśli było to żądane)
     if (params.lock_blocks) {
