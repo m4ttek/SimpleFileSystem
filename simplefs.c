@@ -944,14 +944,13 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     //zwolnienie bloków
     unsigned long blocks_freed = 0;
     unsigned long current_block_no = file_inode->first_data_block;
-    unsigned long first_free_block = structures->master_block_pointer->first_free_block_number;
     while(current_block_no != 0) {
         unsigned long bitmap_block_no = current_block_no / (8 * structures->master_block_pointer->block_size);
         char bit_offset = current_block_no % (8 * structures->master_block_pointer->block_size);
         structures->block_bitmap_pointer[bitmap_block_no] &= ~(1 << bit_offset);
         block* current_block = _read_block(fsfd, current_block_no, structures->master_block_pointer->data_start_block,
                                             structures->master_block_pointer->block_size);
-        if(current_block_no < first_free_block) {
+        if(current_block_no < structures->master_block_pointer->first_free_block_number) {
             //update first free block no
             structures->master_block_pointer->first_free_block_number = current_block_no;
         }
