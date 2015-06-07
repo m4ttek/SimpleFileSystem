@@ -186,12 +186,24 @@ void test_write() {
 
 #define READ_TEST_LEN 16000
 
+//tworzy system plikow do testu reada
+int init_suite3(void)
+{
+    simplefs_init("testfs3", 4096, 8);
+}
+
+//usuwa system plikow po tescie reada
+int clean_suite3(void)
+{
+   remove("testfs3");
+}
+
 /*
  * Funkcje testujące należące do suite 3.
  */
 void test_read() {
     printf ("\n*********** TEST READE ***********\n");
-    simplefs_init("testfs3", 4096, 8);
+
     int fdfs = simplefs_openfs("testfs3");
     CU_ASSERT(fdfs > 0);
     CU_ASSERT(OK == simplefs_creat("/a.txt", fdfs));
@@ -302,8 +314,9 @@ int main()
         return CU_get_error();
     }
 
-    /* add the tests to the suite 3 */
-    if ((NULL == CU_add_test(pSuite, "test of simplefs read", test_read)))
+    /* Test reada */
+    pSuite = CU_add_suite("Suite_3", init_suite3, clean_suite3);
+    if ((NULL == CU_add_test(pSuite, "test of simplefs_read operation", test_read)))
     {
         CU_cleanup_registry();
         return CU_get_error();
