@@ -225,6 +225,19 @@ void test_read() {
             break;
         }
     }
+
+    //test odczytu z bloku
+    simplefs_lseek(fd2, SEEK_SET, (4096/26+1)*26, fdfs);
+    char alphabet[26];
+    CU_ASSERT(26 == simplefs_read(fd, read, 26, fdfs));
+    for(i = 0; i < 26; ++i) {
+        if(alphabet[i] != 'a' + i) {
+            CU_ASSERT(1 == 2);
+            break;
+        }
+    }
+
+
     CU_ASSERT(OK == simplefs_unlink("/a.txt", fdfs));
     CU_ASSERT(OK == simplefs_unlink("/b.txt", fdfs));
 }
@@ -262,7 +275,7 @@ int main()
 
    /* add the tests to the suite */
    /* NOTE - ORDER IS IMPORTANT - MUST TEST fread() AFTER fprintf() */
-   /*if ((NULL == CU_add_test(pSuite, "test of fprintf()", testFPRINTF)) ||
+   if ((NULL == CU_add_test(pSuite, "test of fprintf()", testFPRINTF)) ||
        (NULL == CU_add_test(pSuite, "test of fread()", testFREAD)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs_init", test_initfs)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs openfs", test_openfs)) ||
@@ -274,7 +287,7 @@ int main()
    {
       CU_cleanup_registry();
       return CU_get_error();
-   }*/
+   }
 
     /* add a suite to the registry */
     pSuite = CU_add_suite("Suite_2", init_suite1, clean_suite1);
@@ -291,7 +304,7 @@ int main()
     }
 
     /* add the tests to the suite 3 */
-    /*if ((NULL == CU_add_test(pSuite, "test of simplefs read", test_read)))
+    if ((NULL == CU_add_test(pSuite, "test of simplefs read", test_read)))
     {
         CU_cleanup_registry();
         return CU_get_error();
