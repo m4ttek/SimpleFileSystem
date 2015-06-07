@@ -144,17 +144,19 @@ void test_write() {
     block_pointer = (block *) _read_block(fsfd, 2, data_block_start, 4096);
     CU_ASSERT('t' == block_pointer->data[0]);
     CU_ASSERT('t' == block_pointer->data[17]);
-    /*
+
     // append na tyle długi żeby przeszedł na drugi blok
     char second_bufs[4096];
     int i;
     for(i = 0; i < 4096; i++) {
         second_bufs[i] = 1;
     }
+
+    printf("\n\nZapis dużej dawki jedynek\n\n");
     CU_ASSERT(OK == simplefs_write(fd, second_bufs, 4096, fsfd));
     // sprawdzenie czy dane zapisane poprawnie:
-    block_pointer = (block *) _read_block(fsfd, 1, data_block_start, 4096);
-    block * second_block_pointer = (block *) _read_block(fsfd, 2, data_block_start, 4096);
+    block_pointer = (block *) _read_block(fsfd, 2, data_block_start, 4096);
+    block * second_block_pointer = (block *) _read_block(fsfd, 3, data_block_start, 4096);
     // pierwszy blok
     for (i = 2 * 17; i < 4096 - sizeof(long); i++) {
         CU_ASSERT(1 == block_pointer->data[i]);
@@ -168,7 +170,7 @@ void test_write() {
         if (1 != second_block_pointer->data[i]) {
             break;
         }
-    }*/
+    }
 
     //clean
     //CU_ASSERT(OK == simplefs_unlink("/testfile", fsfd));
@@ -207,7 +209,7 @@ int main()
 
    /* add the tests to the suite */
    /* NOTE - ORDER IS IMPORTANT - MUST TEST fread() AFTER fprintf() */
-   /*if ((NULL == CU_add_test(pSuite, "test of fprintf()", testFPRINTF)) ||
+   if ((NULL == CU_add_test(pSuite, "test of fprintf()", testFPRINTF)) ||
        (NULL == CU_add_test(pSuite, "test of fread()", testFREAD)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs_init", test_initfs)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs openfs", test_openfs)) ||
@@ -219,7 +221,7 @@ int main()
    {
       CU_cleanup_registry();
       return CU_get_error();
-   }*/
+   }
 
     /* add a suite to the registry */
     pSuite = CU_add_suite("Suite_2", init_suite1, clean_suite1);

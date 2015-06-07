@@ -359,7 +359,7 @@ long _find_free_blocks(int fsfd, initialized_structures * initialized_structures
 
         printf("Po zapisie\n");
         // zapisanie numeru wolnego bloku do tablicy
-        *(free_blocks + (free_block_idx * sizeof(unsigned long))) = master_block->first_free_block_number;
+        *(free_blocks + free_block_idx) = master_block->first_free_block_number;
 
         printf("Zmniejszenie liczby wolnych blokow\n");
         // zmniejszenie liczby wolnych bloków
@@ -423,10 +423,11 @@ inode * _load_inode_from_file_structure(initialized_structures * initialized_str
 }
 
 /**
- * Pobiera block.
+ * Pobiera numery bloków, które aktualnie posiada plik. Jeśli number_of_free_blocks != 0 dodatkowo aktualizuje blok.
  */
 int _get_blocks_numbers_taken_by_file(int fsfd, unsigned long first_block_no, master_block * master_block_pointer,
-                                      int (*for_each_record)(void*, int, void*), void * additional_param, unsigned long * blocks_table) {
+                                      int (*for_each_record)(void*, int, void*), void * additional_param,
+                                      unsigned long * blocks_table) {
     printf("\n**** _get_blocks_numbers_taken_by_file ****\n");
     printf("Pierwszy blok: %u\n", first_block_no);
 
@@ -487,7 +488,7 @@ void _unlock_file_blocks(int fsfd, struct flock * flock_structures, unsigned lon
  * Zakładana jest odpowiednia wielkość wypełnionej tablicy {blocks_table}, tak aby dane mogły zostać zapisane.
  */
 void _save_buffer_to_file(initialized_structures * initialized_structures_pointer, write_params * params,
-                          unsigned long * blocks_table, unsigned long real_file_offset) {
+                          unsigned long * blocks_table, unsigned long real_file_offset, unsigned long number_of_all_blocks) {
     printf("\n****** save buffer to file *******\n");
     printf("params->data length = %d, file_offset =  %d\n", params->data_length, params->file_offset);
     master_block * master_block_pointer = initialized_structures_pointer->master_block_pointer;
@@ -503,9 +504,12 @@ void _save_buffer_to_file(initialized_structures * initialized_structures_pointe
         unsigned long block_offset = _get_block_offset(master_block_pointer, block_number);
         lseek(params->fsfd, block_offset + additional_block_offset, SEEK_SET);
 
-        unsigned long data_length_for_block = (params->data_length - data_offset) % (real_block_size - additional_block_offset);
-        printf("Suspicious write. params->data = %X, data_offset = %d, data_length_for_block = %d\n",
-                params->data, data_offset, data_length_for_block);
+        unsigned long data_length_for_block = real_block_size - additional_block_offset;
+        if (params->data_length - data_offset < real_block_size - additional_block_offset) {
+            data_length_for_block = params->data_length - data_offset;
+        }
+        printf("Suspicious write. params->data = %X, data_offset = %d, data_length_for_block = %d, additional_block_offset = %d\n",
+                params->data, data_offset, data_length_for_block, additional_block_offset);
         printf("Sizeof file signature is %d\n", sizeof(file_signature));
         write(params->fsfd, params->data + sizeof(char) * data_offset, data_length_for_block);
         additional_block_offset = 0;
@@ -514,9 +518,11 @@ void _save_buffer_to_file(initialized_structures * initialized_structures_pointe
         // przesunięcie wskaznika na koniec bloku dla zapisania informacji o następnym numerze bloku
         lseek(params->fsfd, block_offset + real_block_size, SEEK_SET);
 
+        printf("\nZapis wskaznika na nastepny number bloku, block_to_start = %d, number_of_all_blocks = %d, blocks_table[block_to_start + 1] = %d\n", block_to_start, number_of_all_blocks, blocks_table[block_to_start + 1]);
         // zapisanie wskaznika na następny numer bloku
-        if (block_to_start != number_of_all_blocks_be_written - 1) {
-            write(params->fsfd, &block_number, sizeof(unsigned long));
+        if (block_to_start != number_of_all_blocks - 1) {
+            printf("Zapis!\n");
+            write(params->fsfd, &blocks_table[block_to_start + 1], sizeof(unsigned long));
         } else {
             // zapisanie zera jako następny numer bloku
             unsigned long zero = 0;
@@ -562,9 +568,12 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     }
 
     // wyznaczenie ile aktualnie zajmuje plik, a ile może zajmować po operacji zapisu
-    unsigned int number_of_all_taken_blocks_by_file = ceil((double) file_size / real_block_size);
-    unsigned int number_of_blocks_to_be_taken_by_file =
-            ceil(((double)real_file_offset + (double) params.data_length) / real_block_size);
+    unsigned int number_of_all_taken_blocks_by_file = file_size / real_block_size;
+    if (file_size != 0) {
+        number_of_all_taken_blocks_by_file++;
+    }
+    unsigned int number_of_blocks_to_be_taken_by_file = 1 + ((real_file_offset + params.data_length - 1) / real_block_size);
+
     // przypadek specjalny - pierwszy zapis do nowo utworzonego pliku
     if (number_of_blocks_to_be_taken_by_file == 0) {
         number_of_blocks_to_be_taken_by_file = 1;
@@ -577,10 +586,11 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     }
     printf("\n\n************\nLiczba wszystkich blokow zajmowanych przez plik: %d, liczba blokow do zajecia: %d\n\n", number_of_all_taken_blocks_by_file, number_of_blocks_to_be_taken_by_file);
     // czy trzeba wyszukać nowe bloki danych dla pliku
+    unsigned int number_of_free_blocks = 0;
     if ((number_of_blocks_to_be_taken_by_file > number_of_all_taken_blocks_by_file)
         || file_inode->first_data_block == 0) {
         // wyszukanie nowych bloków danych
-        unsigned int number_of_free_blocks = number_of_blocks_to_be_taken_by_file - number_of_all_taken_blocks_by_file;
+        number_of_free_blocks = number_of_blocks_to_be_taken_by_file - number_of_all_taken_blocks_by_file;
         //nie wiem czemu tak
         long first_operated_block = _find_free_blocks(params.fsfd, initialized_structures_pointer, number_of_free_blocks,
                           blocks_table + number_of_all_taken_blocks_by_file);
@@ -596,6 +606,12 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     }
 
     unsigned long number_of_flocks = number_of_blocks_to_be_taken_by_file;
+    if (number_of_all_taken_blocks_by_file >= number_of_blocks_to_be_taken_by_file) {
+        number_of_flocks = number_of_all_taken_blocks_by_file;
+    } else {
+        number_of_flocks = number_of_blocks_to_be_taken_by_file;
+    }
+
     struct flock * flock_structures = (struct flock *) malloc(sizeof(struct flock) * number_of_flocks);
     // czy zablokować dodatkowo wszystkie bloki danych, do których funkcja będzie zapisywać dane
     printf("Czy blokowac bloki: %d, dla liczby blokow: %d\n", params.lock_blocks, number_of_flocks);
@@ -618,7 +634,7 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     _unblock_first_free_block(params.fsfd, &flock_structure);
 
     // operacja zapisu do pliku
-    _save_buffer_to_file(initialized_structures_pointer, &params, blocks_table, real_file_offset);
+    _save_buffer_to_file(initialized_structures_pointer, &params, blocks_table, real_file_offset, number_of_flocks);
 
     // zwiększenie pozycji w strukturze file
     file_structure->position += params.data_length;
