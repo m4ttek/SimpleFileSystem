@@ -1225,12 +1225,7 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
         }
         //rolback got inode 
         if(result < 0) {
-            //mark inode as empty
-            is->inode_table[inode_no].type = INODE_EMPTY;
-            //update first free inode if applicable
-            if(inode_no < is->master_block_pointer->first_free_inode) {
-                is->master_block_pointer->first_free_inode = inode_no;
-            }
+            _mark_inode_as_empty(is, inode_no);
         }
         simplefs_close(fd);
     } while( 0 );
