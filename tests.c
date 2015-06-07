@@ -128,6 +128,26 @@ void test_unlink() {
     CU_ASSERT(FILE_DOESNT_EXIST == simplefs_unlink("/testdir", fsfd));
 }
 
+/*
+ * Funkcje testujące należące do suite 2.
+ */
+void test_write() {
+    simplefs_init("testfs2", 4096, 1024);
+    unsigned long data_block_start = 1 + ceil((double) 1024 / (4096 * 8)) + ceil((double) 1024 / floor((double) 4096 / sizeof(inode)));
+    CU_ASSERT(-1 != (fsfd = simplefs_openfs("testfs2")));
+
+    int fd = -1;
+    CU_ASSERT(OK == simplefs_creat("/testfile", fsfd));
+    // TODO - nie działa open!!
+    CU_ASSERT(0 < (fd = simplefs_open("testfile", WRITE_MODE, fsfd)));
+    char * buf = "testing file save";
+    CU_ASSERT(OK == simplefs_write(fd, buf, 17, fsfd));
+    printf("Data block byte start = %d\n", (1 + data_block_start) * 4096 );
+    block * block_pointer = (block *) _read_block(fsfd, 1, data_block_start, 4096);
+
+    CU_ASSERT('t' == block_pointer->data[0]);
+}
+
 int main()
 {
    CU_pSuite pSuite = NULL;
@@ -145,7 +165,7 @@ int main()
 
    /* add the tests to the suite */
    /* NOTE - ORDER IS IMPORTANT - MUST TEST fread() AFTER fprintf() */
-   if ((NULL == CU_add_test(pSuite, "test of fprintf()", testFPRINTF)) ||
+   /*if ((NULL == CU_add_test(pSuite, "test of fprintf()", testFPRINTF)) ||
        (NULL == CU_add_test(pSuite, "test of fread()", testFREAD)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs_init", test_initfs)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs openfs", test_openfs)) ||
@@ -156,7 +176,21 @@ int main()
    {
       CU_cleanup_registry();
       return CU_get_error();
-   }
+   }*/
+
+    /* add a suite to the registry */
+    pSuite = CU_add_suite("Suite_2", init_suite1, clean_suite1);
+    if (NULL == pSuite) {
+        CU_cleanup_registry();
+        return CU_get_error();
+    }
+
+    /* add the tests to the suite 2 */
+    if ((NULL == CU_add_test(pSuite, "test of simplefs write", test_write)))
+    {
+        CU_cleanup_registry();
+        return CU_get_error();
+    }
 
    /* Run all tests using the CUnit Basic interface */
    CU_basic_set_mode(CU_BRM_VERBOSE);
