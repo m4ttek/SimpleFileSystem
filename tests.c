@@ -175,6 +175,8 @@ void test_write() {
 }
 
 
+#define READ_TEST_LEN 16000
+
 /*
  * Funkcje testujące należące do suite 3.
  */
@@ -192,7 +194,26 @@ void test_read() {
     CU_ASSERT(10 == simplefs_read(fd, result, 10, fdfs));
     result[10] = '\0';
     CU_ASSERT(strcmp("adam to gl", result) == 0);
+    CU_ASSERT(OK == simplefs_creat("/b.txt", fdfs));
+    int fd2 = simplefs_open("/b.txt", READ_AND_WRITE, fdfs);
+    CU_ASSERT(0 < fd2);
+    char message[READ_TEST_LEN], read[READ_TEST_LEN];
+    int i = 0;
+    for(i = 0; i < READ_TEST_LEN; ++i) {
+        message[i] = 'a' + i % 26;
+        read[i] = 0;
+    }
+    CU_ASSERT(OK == simplefs_write(fd2, message, READ_TEST_LEN, fdfs));    
+    simplefs_lseek(fd2, SEEK_SET, 0, fdfs);
+    CU_ASSERT(READ_TEST_LEN == simplefs_read(fd2, read, READ_TEST_LEN, fdfs));
+    for(i = 0; i < 3000; ++i) {
+        if(read[i] != message[i]) {
+            CU_ASSERT(0 == 1);
+            break;
+        }
+    }
     CU_ASSERT(OK == simplefs_unlink("/a.txt", fsfd));
+    CU_ASSERT(OK == simplefs_unlink("/b.txt", fsfd));
 }
 
 void test_create_100_files() {
