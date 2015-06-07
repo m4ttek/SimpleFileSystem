@@ -229,11 +229,10 @@ void test_read() {
     //test odczytu z bloku
     simplefs_lseek(fd2, SEEK_SET, (4096/26+1)*26, fdfs);
     char alphabet[26];
-    CU_ASSERT(26 == simplefs_read(fd, read, 26, fdfs));
+    CU_ASSERT(26 == simplefs_read(fd2, alphabet, 26, fdfs));
     for(i = 0; i < 26; ++i) {
         if(alphabet[i] != 'a' + i) {
             CU_ASSERT(1 == 2);
-            break;
         }
     }
 

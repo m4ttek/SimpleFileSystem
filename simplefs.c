@@ -21,6 +21,8 @@ pthread_mutex_t open_files_write_mutex = PTHREAD_MUTEX_INITIALIZER;
  * ---------------------------------------------------------------------------------------------------------------------
  */
 
+#define DEBUG //printf
+
 typedef struct write_params_t {
     int fsfd;               // deskryptor systemu plików
     int fd;                 // deskryptor pliku
@@ -52,7 +54,7 @@ int munmap_enhanced(void *addr, size_t length, unsigned delta) {
 master_block get_initial_master_block(unsigned block_size, unsigned number_of_blocks) {
     master_block masterblock;
     memset(&masterblock, 0, sizeof(master_block));
-    printf("Setting block size to %d\n", block_size);
+    DEBUG("Setting block size to %d\n", block_size);
     masterblock.block_size = block_size;
     masterblock.number_of_blocks = number_of_blocks;
     masterblock.number_of_free_blocks = number_of_blocks;
@@ -68,9 +70,9 @@ master_block get_initial_master_block(unsigned block_size, unsigned number_of_bl
 
 void _print_masterblock_info(master_block * system_master_block) {
     if (system_master_block == NULL) {
-        printf("System master block was not initialized!");
+        DEBUG("System master block was not initialized!");
     }
-    printf("Master block:\nBlock size: %ud\nNumber of blocks: %ld\nNumber of free blocks: %ld\nFirst free block number: %ld\n"
+    DEBUG("Master block:\nBlock size: %ud\nNumber of blocks: %ld\nNumber of free blocks: %ld\nFirst free block number: %ld\n"
          "Number of bitmap blocks: %ld", system_master_block->block_size, system_master_block->number_of_blocks,
            system_master_block->number_of_free_blocks, system_master_block->first_free_block_number, system_master_block->number_of_bitmap_blocks);
 }
@@ -114,7 +116,7 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
         close(fd);
         return NULL;
     }
-    printf("mmaped master block pointer. Block size is %d\n", master_block_pointer->block_size);
+    DEBUG("mmaped master block pointer. Block size is %d\n", master_block_pointer->block_size);
     // pobranie bitmapy
     char * block_bitmap_pointer = NULL;
     unsigned int bitmaps_size = 0;
@@ -137,7 +139,7 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
                        PROT_READ | PROT_WRITE, MAP_SHARED, fd, 1 * master_block_pointer->block_size + bitmaps_size, &inode_delta);
     if (inodes_table == MAP_FAILED) {
         perror("mmap");
-        printf("Failed params: size = %d, fd = %d, offset = %d\n", inodes_size, fd, 1*master_block_pointer->block_size + bitmaps_size);
+        DEBUG("Failed params: size = %d, fd = %d, offset = %d\n", inodes_size, fd, 1*master_block_pointer->block_size + bitmaps_size);
         munmap(master_block_pointer, sizeof(master_block));
         munmap_enhanced(block_bitmap_pointer, bitmaps_size, bitmap_delta);
         close(fd);
@@ -149,7 +151,7 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
     initialized_structures_pointer->inode_table = inodes_table;
     initialized_structures_pointer->bitmap_delta = bitmap_delta;
     initialized_structures_pointer->inode_delta = inode_delta;
-    printf("Initalized structures!\n");
+    DEBUG("Initalized structures!\n");
     return initialized_structures_pointer;
 }
 
@@ -158,21 +160,21 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
  * Powinna być wywowałana zawsze po zakończeniu pracy nad strukturami zwróconymi przez funkcję {_initialize_structures}
  */
 void _uninitilize_structures(initialized_structures * initialized_structures_pointer) {
-    printf("Uninitializing structs");
+    DEBUG("Uninitializing structs");
     master_block* mb = initialized_structures_pointer->master_block_pointer;
     int result = munmap_enhanced(initialized_structures_pointer->block_bitmap_pointer,
             mb->number_of_bitmap_blocks * mb->block_size, initialized_structures_pointer->bitmap_delta);
-    printf("Munmap result: %d", result);
+    DEBUG("Munmap result: %d", result);
     result = munmap_enhanced(initialized_structures_pointer->inode_table,
             mb->number_of_inode_table_blocks * mb->block_size, initialized_structures_pointer->inode_delta);
-    printf("Munmap result: %d", result);
+    DEBUG("Munmap result: %d", result);
     result = munmap(initialized_structures_pointer->master_block_pointer, sizeof(master_block));
-    printf("Munmap result: %d", result);
+    DEBUG("Munmap result: %d", result);
     /*munmap(initialized_structures_pointer->master_block_pointer, sizeof(master_block));
     int result = munmap(initialized_structures_pointer, initialized_structures_pointer->master_block_pointer->block_size *
                    (1 + initialized_structures_pointer->master_block_pointer->number_of_bitmap_blocks
                     + initialized_structures_pointer->master_block_pointer->number_of_inode_table_blocks));*/
-    //printf("Munmap result: %d", result);
+    //DEBUG("Munmap result: %d", result);
 }
 
 /**
@@ -213,12 +215,12 @@ void free_block_struct(block* bl) {
  * @return odczytany inode
  */
 inode* _get_root_inode(int fd, master_block* masterblock) {
-    printf("Seeking to %lu\n", masterblock->first_inode_table_block * masterblock->block_size);
-    printf("first inode table block is %d and block size is %d\n", masterblock->first_inode_table_block, masterblock->block_size);
+    DEBUG("Seeking to %lu\n", masterblock->first_inode_table_block * masterblock->block_size);
+    DEBUG("first inode table block is %d and block size is %d\n", masterblock->first_inode_table_block, masterblock->block_size);
     lseek(fd, masterblock->first_inode_table_block * masterblock->block_size, SEEK_SET);
     inode* root_inode = malloc(sizeof(inode));
     read(fd, root_inode, sizeof(inode));
-    printf("Read root inode. Name is %s. Type is %c and first data block is %lu\n", root_inode->filename, root_inode->type, root_inode->first_data_block);
+    DEBUG("Read root inode. Name is %s. Type is %c and first data block is %lu\n", root_inode->filename, root_inode->type, root_inode->first_data_block);
     return root_inode;
 }
 
@@ -227,25 +229,25 @@ inode* _get_root_inode(int fd, master_block* masterblock) {
  * @return znaleziony inode
  */
 inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* masterblock, unsigned long* inode_no) {
-    printf("_get_inode_in_dir %c\n", parent_inode->type);
+    DEBUG("_get_inode_in_dir %c\n", parent_inode->type);
 
     if(parent_inode->type != INODE_DIR) {
         return NULL;
     }
     block* dir_block = _read_block(fd, parent_inode->first_data_block, masterblock->data_start_block, masterblock->block_size);
-    printf("Next data block: %d\n", dir_block->next_data_block);
+    DEBUG("Next data block: %d\n", dir_block->next_data_block);
     long i;
     while(1) {
-        printf("finding dir: next data block: %d\n", dir_block->next_data_block);
+        DEBUG("finding dir: next data block: %d\n", dir_block->next_data_block);
         for(i = 0; i <= masterblock->block_size - sizeof(file_signature) - sizeof(long); i += sizeof(file_signature)) {
-            printf("indeks %d\n", i);
+            DEBUG("indeks %d\n", i);
             file_signature* signature = (file_signature*) (dir_block->data + i * sizeof(char));
             if(strcmp(name, signature->name) == 0 && signature->inode_no != 0) {
                 //calculate number of inode table block, where we'll find the right node
                 long block_to_read = signature->inode_no * sizeof(inode) / masterblock->block_size;
                 //zapameitujemy numer inode w tablicy inodow
                 *inode_no = signature->inode_no;
-                printf("Zapamiętanie w tablicy inodów: %lu\n", signature->inode_no);
+                DEBUG("Zapamiętanie w tablicy inodów: %lu\n", signature->inode_no);
                 block* inode_block = _read_block(fd, block_to_read, masterblock->first_inode_table_block, masterblock->block_size);
                 inode* result_inode = malloc(sizeof(inode));
                 memcpy(result_inode, inode_block->data + ((signature->inode_no * sizeof(inode)) % masterblock->block_size), sizeof(inode));
@@ -255,13 +257,13 @@ inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* 
             }
         }
         if(dir_block->next_data_block == 0) {
-            printf("Nie znaleziony inode!\n");
+            DEBUG("Nie znaleziony inode!\n");
             free(dir_block);
             return NULL;
         }
         dir_block = _read_block(fd, dir_block->next_data_block, masterblock->data_start_block, masterblock->block_size);
     }
-    printf("wyjscie z get inode in dir\n");
+    DEBUG("wyjscie z get inode in dir\n");
 }
 
 /**
@@ -276,12 +278,12 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
     if(strlen(path) == 1) {
         //root inode
         *inode_no = 0;
-        printf("In _get_inode_by_path - get root inode. Block size is %d\n", masterblock->block_size);
+        DEBUG("In _get_inode_by_path - get root inode. Block size is %d\n", masterblock->block_size);
         return _get_root_inode(fd, masterblock);
     }
     unsigned path_index = 1;
     char* path_part = malloc(strlen(path) * sizeof(char));
-    printf("Path_part %c\n", path_part);
+    DEBUG("Path_part %c\n", path_part);
     inode* current_inode = _get_root_inode(fd, masterblock);
     while(1) {
         unsigned i = 0;
@@ -292,7 +294,7 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
         inode* new_inode = _get_inode_in_dir(fd, current_inode, path_part, masterblock, inode_no); //inode_no sie nie zmieni jak sie okaze ze path_part nie jest juz katalogiem
         free(current_inode);
         if(new_inode == NULL || new_inode->type == INODE_EMPTY) {
-            printf("Nie znaleziony inode!\n");
+            DEBUG("Nie znaleziony inode!\n");
             free(path_part);
             return NULL;
         }
@@ -344,46 +346,46 @@ int _unblock_first_free_block(int fsfd, struct flock * fl) {
  */
 long _find_free_blocks(int fsfd, initialized_structures * initialized_structures_pointer, unsigned long number_of_free_blocks,
                       unsigned long * free_blocks) {
-    printf("In _find_free_blocks. free blocks = %d\n", number_of_free_blocks);
+    DEBUG("In _find_free_blocks. free blocks = %d\n", number_of_free_blocks);
     master_block * master_block = initialized_structures_pointer->master_block_pointer;
     if (master_block->number_of_free_blocks == 0) {
         return NO_FREE_BLOCKS;
     }
     unsigned long first_free_block_number = master_block->first_free_block_number;
     char * block_bitmap_pointer = initialized_structures_pointer->block_bitmap_pointer;
-    printf("block bitmap pointer = %X\n", block_bitmap_pointer);
+    DEBUG("block bitmap pointer = %X\n", block_bitmap_pointer);
 
     // wolny blok zapisany na wypadek, gdyby poszukiwanie wolnych bloków nie mogło się poprawnie zakończyć (brakuje miejsca)
     unsigned long saved_first_free_block_number = first_free_block_number;
     unsigned long free_block_idx = 0;
     for (free_block_idx; free_block_idx < number_of_free_blocks; free_block_idx++) {
-        printf("przebieg petli: %d\n", free_block_idx );
+        DEBUG("przebieg petli: %d\n", free_block_idx );
 
         // zaznaczenie bloku jako zajętego
-        printf("bitmap pointer %d\n", block_bitmap_pointer);
+        DEBUG("bitmap pointer %d\n", block_bitmap_pointer);
         char * bitmap_byte = block_bitmap_pointer + ((master_block->first_free_block_number / 8) * sizeof(char));
         unsigned int bit_in_byte = master_block->first_free_block_number % (sizeof(char) * 8);
-        printf("bitmap byte evaluates to %d bit in byte %d\n", bitmap_byte, bit_in_byte);
+        DEBUG("bitmap byte evaluates to %d bit in byte %d\n", bitmap_byte, bit_in_byte);
         (*bitmap_byte) |= (1 << bit_in_byte);
 
-        printf("Po zapisie\n");
+        DEBUG("Po zapisie\n");
         // zapisanie numeru wolnego bloku do tablicy
         *(free_blocks + free_block_idx) = master_block->first_free_block_number;
 
-        printf("Zmniejszenie liczby wolnych blokow\n");
+        DEBUG("Zmniejszenie liczby wolnych blokow\n");
         // zmniejszenie liczby wolnych bloków
         master_block->number_of_free_blocks--;
 
-        printf("Nastepny blok pretendednt\n");
+        DEBUG("Nastepny blok pretendednt\n");
         // następny blok jest pretendentem na wolny blok
         master_block->first_free_block_number++;
 
-        printf("przed whilem\n");
+        DEBUG("przed whilem\n");
         // wyszkanie następnego wolnego bloku, a w nim wolnego bitu
         while (TRUE) {
             unsigned char bytes_mask = (0xFFFF << (master_block->first_free_block_number - 1));
-            printf("Maska bitowa dla bajtu: %x, bajt= %x\n", bytes_mask, (*bitmap_byte));
-            printf("Maska bitwa nalozona na bajt: %x, first free block number%d\n", ((*bitmap_byte) & bytes_mask), master_block->first_free_block_number);
+            DEBUG("Maska bitowa dla bajtu: %x, bajt= %x\n", bytes_mask, (*bitmap_byte));
+            DEBUG("Maska bitwa nalozona na bajt: %x, first free block number%d\n", ((*bitmap_byte) & bytes_mask), master_block->first_free_block_number);
             // jeśli istnieje wolny bit w bitmapie
             if ((((*bitmap_byte) & bytes_mask) != bytes_mask) && master_block->first_free_block_number < master_block->number_of_blocks) {
                 char bitmap_byte_to_parse = (*bitmap_byte);
@@ -405,9 +407,9 @@ long _find_free_blocks(int fsfd, initialized_structures * initialized_structures
                 master_block->first_free_block_number += 8;
             }
         }
-        printf("zakonczenie wyszukiwania wolnych blokow!\n");
+        DEBUG("zakonczenie wyszukiwania wolnych blokow!\n");
     }
-    printf("wyjscie z find free blocks!\n");
+    DEBUG("wyjscie z find free blocks!\n");
     return (long) saved_first_free_block_number;
 }
 
@@ -417,7 +419,7 @@ long _find_free_blocks(int fsfd, initialized_structures * initialized_structures
 file * _get_file_by_fd(int fd) {
     file* file_found;
     HASH_FIND_INT( open_files, &fd, file_found);
-    printf("Found file. mode = %d\n", file_found->mode);
+    DEBUG("Found file. mode = %d\n", file_found->mode);
     return file_found;
 }
 
@@ -437,8 +439,8 @@ inode * _load_inode_from_file_structure(initialized_structures * initialized_str
 int _get_blocks_numbers_taken_by_file(int fsfd, unsigned long first_block_no, master_block * master_block_pointer,
                                       int (*for_each_record)(void*, int, void*), void * additional_param,
                                       unsigned long * blocks_table) {
-    printf("\n**** _get_blocks_numbers_taken_by_file ****\n");
-    printf("Pierwszy blok: %u\n", first_block_no);
+    DEBUG("\n**** _get_blocks_numbers_taken_by_file ****\n");
+    DEBUG("Pierwszy blok: %u\n", first_block_no);
 
     block * block_pointer = NULL;
     int i = 0;
@@ -451,11 +453,11 @@ int _get_blocks_numbers_taken_by_file(int fsfd, unsigned long first_block_no, ma
             return -2;
         }
         blocks_table[i++] = block_no;
-        printf("Zapisany numer bloku do tablicy: %d\n", block_no);
+        DEBUG("Zapisany numer bloku do tablicy: %d\n", block_no);
         block_no = block_pointer->next_data_block;
-        printf("nastepny blok danych: %u\n", block_no);
+        DEBUG("nastepny blok danych: %u\n", block_no);
     } while (block_pointer->next_data_block != 0);
-    printf("Wyjscie z **** _get_blocks_numbers_taken_by_file ****\n");
+    DEBUG("Wyjscie z **** _get_blocks_numbers_taken_by_file ****\n");
     return 0;
 }
 
@@ -465,11 +467,11 @@ int _get_blocks_numbers_taken_by_file(int fsfd, unsigned long first_block_no, ma
 void _lock_file_blocks(int fsfd, master_block * master_block_pointer, unsigned long * blocks_table,
                        unsigned long number_of_blocks, struct flock * flock_structures) {
     unsigned long idx = 0;
-    printf("\n\n******** _lock_file_blocks ********\n");
-    printf("Liczba blokow: %d\n", number_of_blocks);
+    DEBUG("\n\n******** _lock_file_blocks ********\n");
+    DEBUG("Liczba blokow: %d\n", number_of_blocks);
     for (idx; idx < number_of_blocks; idx++) {
         unsigned long block_offset = _get_block_offset(master_block_pointer, blocks_table[idx]);
-        printf("Offset dla bloku: %u, wynosi: %u", blocks_table[idx], block_offset);
+        DEBUG("Offset dla bloku: %u, wynosi: %u", blocks_table[idx], block_offset);
         struct flock * flock_str = flock_structures + (idx * sizeof(flock_structures));
         flock_str->l_type = F_WRLCK;
         flock_str->l_whence = SEEK_SET;
@@ -498,8 +500,8 @@ void _unlock_file_blocks(int fsfd, struct flock * flock_structures, unsigned lon
  */
 void _save_buffer_to_file(initialized_structures * initialized_structures_pointer, write_params * params,
                           unsigned long * blocks_table, unsigned long real_file_offset, unsigned long number_of_all_blocks) {
-    printf("\n****** save buffer to file *******\n");
-    printf("params->data length = %d, file_offset =  %d\n", params->data_length, params->file_offset);
+    DEBUG("\n****** save buffer to file *******\n");
+    DEBUG("params->data length = %d, file_offset =  %d\n", params->data_length, params->file_offset);
     master_block * master_block_pointer = initialized_structures_pointer->master_block_pointer;
     unsigned int real_block_size = master_block_pointer->block_size - sizeof(long);
     unsigned long block_to_start = real_file_offset / real_block_size;
@@ -525,9 +527,9 @@ void _save_buffer_to_file(initialized_structures * initialized_structures_pointe
         if (params->data_length - data_offset < real_block_size - additional_block_offset) {
             data_length_for_block = params->data_length - data_offset;
         }
-        printf("Suspicious write. params->data = %X, data_offset = %d, data_length_for_block = %d, additional_block_offset = %d\n",
+        DEBUG("Suspicious write. params->data = %X, data_offset = %d, data_length_for_block = %d, additional_block_offset = %d\n",
                 params->data, data_offset, data_length_for_block, additional_block_offset);
-        printf("Sizeof file signature is %d\n", sizeof(file_signature));
+        DEBUG("Sizeof file signature is %d\n", sizeof(file_signature));
         write(params->fsfd, params->data + sizeof(char) * data_offset, data_length_for_block);
         additional_block_offset = 0;
         data_offset += data_length_for_block;
@@ -535,10 +537,10 @@ void _save_buffer_to_file(initialized_structures * initialized_structures_pointe
         // przesunięcie wskaznika na koniec bloku dla zapisania informacji o następnym numerze bloku
         lseek(params->fsfd, block_offset + real_block_size, SEEK_SET);
 
-        //printf("\nZapis wskaznika na nastepny number bloku, block_to_start = %d, number_of_all_blocks = %d, blocks_table[block_to_start + 1] = %d\n", block_to_start, number_of_all_blocks, blocks_table[block_to_start + 1]);
+        //DEBUG("\nZapis wskaznika na nastepny number bloku, block_to_start = %d, number_of_all_blocks = %d, blocks_table[block_to_start + 1] = %d\n", block_to_start, number_of_all_blocks, blocks_table[block_to_start + 1]);
         // zapisanie wskaznika na następny numer bloku
         if (block_to_start != number_of_all_blocks - 1) {
-            printf("Zapis!\n");
+            DEBUG("Zapis!\n");
             write(params->fsfd, &blocks_table[block_to_start + 1], sizeof(unsigned long));
         } else {
             // zapisanie zera jako następny numer bloku
@@ -568,7 +570,7 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     file * file_structure = _get_file_by_fd(params.fd);
     inode * file_inode = _load_inode_from_file_structure(initialized_structures_pointer, file_structure);
     unsigned long file_size = file_inode->size;
-    printf("_write_unsafe. Filze size = %d\n", file_size);
+    DEBUG("_write_unsafe. Filze size = %d\n", file_size);
 
     // sprawdzenie poprawności dostępu do pliku
     if (file_structure->mode == READ_MODE) {
@@ -606,7 +608,7 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     } else {
         blocks_table = (unsigned long *) malloc(sizeof(unsigned long) * number_of_blocks_to_be_taken_by_file);
     }
-    printf("\n\n************\nLiczba wszystkich blokow zajmowanych przez plik: %d, liczba blokow do zajecia: %d\n\n", number_of_all_taken_blocks_by_file, number_of_blocks_to_be_taken_by_file);
+    DEBUG("\n\n************\nLiczba wszystkich blokow zajmowanych przez plik: %d, liczba blokow do zajecia: %d\n\n", number_of_all_taken_blocks_by_file, number_of_blocks_to_be_taken_by_file);
     // czy trzeba wyszukać nowe bloki danych dla pliku
     unsigned int number_of_free_blocks = 0;
     if ((number_of_blocks_to_be_taken_by_file > number_of_all_taken_blocks_by_file)
@@ -617,12 +619,12 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
         long first_operated_block = _find_free_blocks(params.fsfd, initialized_structures_pointer, number_of_free_blocks,
                           blocks_table + number_of_all_taken_blocks_by_file);
         if (first_operated_block == NO_FREE_BLOCKS) {
-            printf("zle!");
+            DEBUG("zle!");
             _unblock_first_free_block(params.fsfd, &flock_structure);
             free(blocks_table);
             return NO_FREE_BLOCKS;
         } else if (file_inode->first_data_block == 0) {
-            printf("First operated block: %d\n", first_operated_block);
+            DEBUG("First operated block: %d\n", first_operated_block);
             file_inode->first_data_block = first_operated_block;
         }
     }
@@ -636,7 +638,7 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
 
     struct flock * flock_structures = (struct flock *) malloc(sizeof(struct flock) * number_of_flocks);
     // czy zablokować dodatkowo wszystkie bloki danych, do których funkcja będzie zapisywać dane
-    printf("Czy blokowac bloki: %d, dla liczby blokow: %d\n", params.lock_blocks, number_of_flocks);
+    DEBUG("Czy blokowac bloki: %d, dla liczby blokow: %d\n", params.lock_blocks, number_of_flocks);
     if (_get_blocks_numbers_taken_by_file(params.fsfd, file_inode->first_data_block, master_block_pointer,
                                           params.for_each_record, params.additional_param, blocks_table) == -2) {
         return -2;
@@ -660,7 +662,7 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
 
     // zwiększenie pozycji w strukturze file
     file_structure->position += params.data_length;
-    printf("Nowa pozycja w strukturze file: %d", file_structure->position);
+    DEBUG("Nowa pozycja w strukturze file: %d", file_structure->position);
 
     // odblokowanie zablokowanych bloków danych (jeśli było to żądane)
     if (params.lock_blocks) {
@@ -676,12 +678,12 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
  * @return odczytany master block
  */
 master_block* _get_master_block(int fsfd) {
-    printf("get master block. fd = %d\n", fsfd);
+    DEBUG("get master block. fd = %d\n", fsfd);
     lseek(fsfd, 0, SEEK_SET);
     master_block* masterblock = malloc(sizeof(master_block));
     read(fsfd, masterblock, sizeof(master_block));
-    printf("Read first inode table block: %d\n", masterblock->first_inode_table_block);
-    printf("Sizeof block_size is %d\n", sizeof(masterblock->block_size));
+    DEBUG("Read first inode table block: %d\n", masterblock->first_inode_table_block);
+    DEBUG("Sizeof block_size is %d\n", sizeof(masterblock->block_size));
     return masterblock;
 }
 
@@ -717,10 +719,10 @@ unsigned long _insert_new_inode(inode* new_inode, initialized_structures* struct
     lock.l_start = FIRST_FREE_INODE_OFFSET;
     lock.l_len = sizeof(structures->master_block_pointer->first_free_inode);
     lock.l_pid = getpid();
-printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_pointer);
+DEBUG("Writing new inode: masterblock pointer: %d\n", structures->master_block_pointer);
     //lock first free inode in master block
     fcntl(fsfd, F_SETLKW, &lock);
-    printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_pointer);
+    DEBUG("Writing new inode: masterblock pointer: %d\n", structures->master_block_pointer);
     unsigned long inode_no = structures->master_block_pointer->first_free_inode;
     if(inode_no == 0) {
         lock.l_type = F_UNLCK;
@@ -777,11 +779,11 @@ printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_
  */
 int _check_duplicate_file_names_in_block(block* data_block, int block_size, void* name) {
     file_signature* signature = (file_signature*) data_block->data;
-    printf("in check_duplicat file names. data_block->data = %X, liczba sygnatur na plik:%d\n", data_block->data, block_size / sizeof(file_signature));
+    DEBUG("in check_duplicat file names. data_block->data = %X, liczba sygnatur na plik:%d\n", data_block->data, block_size / sizeof(file_signature));
     int i;
     for(i = 0; i < block_size / sizeof(file_signature); i++) {
-        printf("wchodze");
-        printf("signature node: %d, signature name %s\n", signature->inode_no, signature->name);
+        DEBUG("wchodze");
+        DEBUG("signature node: %d, signature name %s\n", signature->inode_no, signature->name);
         if(signature->inode_no == 0) {
             signature++;
             continue;
@@ -790,11 +792,11 @@ int _check_duplicate_file_names_in_block(block* data_block, int block_size, void
             //exists!
             return FALSE;
         }
-        printf("Adding %d to signature\n", sizeof(file_signature));
+        DEBUG("Adding %d to signature\n", sizeof(file_signature));
 
         signature++;
     }
-    printf("wychodze");
+    DEBUG("wychodze");
     return TRUE;
 }
 
@@ -828,7 +830,7 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
 
     //insert master block
     write(fd, &masterblock, sizeof(master_block));
-    printf("Masterblock written\n");
+    DEBUG("Masterblock written\n");
 
     //mark first block as taken
     lseek(fd, masterblock.block_size, SEEK_SET);
@@ -855,7 +857,7 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
     //allocate space for data
     lseek(fd, fs_size - 1, SEEK_SET);
     write(fd, "\0", 1);
-    printf("Allocated %d bytes\n", fs_size);
+    DEBUG("Allocated %d bytes\n", fs_size);
 
     close(fd);
     return 0;
@@ -863,7 +865,7 @@ int simplefs_init(char * path, unsigned block_size, unsigned number_of_blocks) {
 
 int simplefs_openfs(char *path) { //Adam
     int fd = open(path, O_RDWR, 0644);
-    printf("OPEN FS. fd = %d\n", fd);
+    DEBUG("OPEN FS. fd = %d\n", fd);
     if(fd == -1) {
         return -1;
     }
@@ -888,12 +890,12 @@ int simplefs_open(char *name, int mode, int fsfd) { //Michal
     master_block* masterblock = _get_master_block(fsfd);
     unsigned i = 0;
     unsigned long tmp;
-    printf("\nSimplefs open - rozpoczęcie poszukiwania inoda.\n");
+    DEBUG("\nSimplefs open - rozpoczęcie poszukiwania inoda.\n");
     inode* file_inode = _get_inode_by_path(name, masterblock, fsfd, &tmp);
     if (file_inode == NULL) {
         return FILE_DOESNT_EXIST;
     }
-    printf("\n\nSimplefs open, pobrany inode: typ = %c size = %d\n", file_inode->type, file_inode->size);
+    DEBUG("\n\nSimplefs open, pobrany inode: typ = %c size = %d\n", file_inode->type, file_inode->size);
     if(file_inode == NULL) {
         free(masterblock);
         return FILE_DOESNT_EXIST;
@@ -978,7 +980,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
 
         //free block in bitmap
         unsigned long bitmap_block_no = current_block_no / (8 * structures->master_block_pointer->block_size);
-        printf("\n\n                      Numer bitmapy do zwolnienia %d\n\n", bitmap_block_no);
+        DEBUG("\n\n                      Numer bitmapy do zwolnienia %d\n\n", bitmap_block_no);
         char bit_offset = current_block_no % 8;
         structures->block_bitmap_pointer[bitmap_block_no] &= ~(1 << bit_offset);
         block* current_block = _read_block(fsfd, current_block_no, structures->master_block_pointer->data_start_block,
@@ -1011,7 +1013,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     for(i = 0;;i++) {
         file_signature signature;
         simplefs_read(dir_fd, (char*) &signature, sizeof(file_signature), fsfd);
-        printf("\n\n\n%d. signature.inode_no = %d, strcmp = %d, signature.name = %s, name = %s\n\n\n", i, signature.inode_no, strcmp(signature.name, name + filename_position + 1), signature.name, name + filename_position + 1);
+        DEBUG("\n\n\n%d. signature.inode_no = %d, strcmp = %d, signature.name = %s, name = %s\n\n\n", i, signature.inode_no, strcmp(signature.name, name + filename_position + 1), signature.name, name + filename_position + 1);
         if(strcmp(signature.name, name + filename_position + 1) == 0 && signature.inode_no != 0) {
             //clear
             signature.inode_no = 0;
@@ -1132,13 +1134,13 @@ void _lock_lock_file(master_block * mb, int fsfd) {
     unsigned delta;
     int * counter = (int *) mmap_enhanced(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED,
                     fsfd, mb->data_start_block * mb->block_size, &delta);
-    printf("Printing master block data. data start block = %d, block size = %d\n", mb->data_start_block, mb->block_size);
-    printf("mmapped counter, address = %d\n", counter);
-    printf("Co wychodzi? %X\n", (mb->data_start_block * mb->block_size) & ~(sysconf(_SC_PAGE_SIZE) - 1));
-    printf("Counter = %d", *counter);
+    DEBUG("Printing master block data. data start block = %d, block size = %d\n", mb->data_start_block, mb->block_size);
+    DEBUG("mmapped counter, address = %d\n", counter);
+    DEBUG("Co wychodzi? %X\n", (mb->data_start_block * mb->block_size) & ~(sysconf(_SC_PAGE_SIZE) - 1));
+    DEBUG("Counter = %d", *counter);
     (*counter)++;
-    printf("Counter = %d", *counter);
-    printf("Munmap result = %d\n", munmap_enhanced(counter, sizeof(int), delta));
+    DEBUG("Counter = %d", *counter);
+    DEBUG("Munmap result = %d\n", munmap_enhanced(counter, sizeof(int), delta));
     //unlock lock block
     lock_block.l_type = F_UNLCK;
     fcntl(fsfd, F_SETLK, &lock_block);
@@ -1225,14 +1227,14 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
     }
 
     file_name[file_name_length] = '\0';
-    printf("%d", path_length);
-    printf("%s\n", path);
-    printf("%s\n", file_name);
+    DEBUG("%d", path_length);
+    DEBUG("%s\n", path);
+    DEBUG("%s\n", file_name);
     //blokujemy plik .lock
     initialized_structures * is = _initialize_structures(fsfd, 1);
-    printf("masterblock pointer: %d\n", is->master_block_pointer);
+    DEBUG("masterblock pointer: %d\n", is->master_block_pointer);
     inode * parent_node;
-    printf("Przed seg fault: is = %d\n", is);
+    DEBUG("Przed seg fault: is = %d\n", is);
     _lock_lock_file(is->master_block_pointer, fsfd);
     do {
         unsigned long tmp;
@@ -1241,8 +1243,8 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
             result = DIR_DOESNT_EXIST;
             break;
         }
-        printf("%d", tmp);
-        printf("\n%s\n", parent_node->filename);
+        DEBUG("%d", tmp);
+        DEBUG("\n%s\n", parent_node->filename);
         inode new_file;
         strcpy(new_file.filename, file_name);
         new_file.type = (is_dir ? 'D' : 'F');
@@ -1253,7 +1255,7 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
             result =  NO_FREE_INODES;
             break;
         }
-        printf("Inserted new inofde: %lu\n", inode_no);
+        DEBUG("Inserted new inofde: %lu\n", inode_no);
         path[path_length] = '\0'; //przerobic katalog na plik
         write_params write_params_value;
         write_params_value.fsfd = fsfd;
@@ -1346,7 +1348,7 @@ int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
 int simplefs_write(int fd, char *buf, int len, int fsfd) { //Mateusz
     initialized_structures * initialized_structures_pointer = _initialize_structures(fsfd, 1);
     if (initialized_structures_pointer == NULL) {
-        printf("Blad");
+        DEBUG("Blad");
         return -1;
     }
     file * file_pointer = _get_file_by_fd(fd);
@@ -1376,7 +1378,7 @@ int simplefs_write(int fd, char *buf, int len, int fsfd) { //Mateusz
 int simplefs_lseek(int fd, int whence, int offset, int fsfd) { //Mateusz
     initialized_structures * initialized_structures_pointer = _initialize_structures(fsfd, 1);
     if (initialized_structures_pointer == NULL) {
-        printf("Blad");
+        DEBUG("Blad");
         return -1;
     }
     file * file_pointer =_get_file_by_fd(fd);
