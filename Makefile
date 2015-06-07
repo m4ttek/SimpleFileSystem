@@ -25,5 +25,5 @@ tests.o: tests.c
 	$(CC) $(CFLAGS) -c tests.c -o tests.o
 
 clean:
-	rm *.o
+	rm *.o tests app testfs2 testfs3
 

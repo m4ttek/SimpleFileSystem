@@ -174,6 +174,27 @@ void test_write() {
     //CU_ASSERT(OK == simplefs_unlink("/testfile", fsfd));
 }
 
+
+/*
+ * Funkcje testujące należące do suite 3.
+ */
+void test_read() {
+    printf ("\n*********** TEST READE ***********\n");
+    simplefs_init("testfs3", 4096, 8);
+    int fdfs = simplefs_openfs("testfs3");
+    CU_ASSERT(fdfs > 0);
+    CU_ASSERT(OK == simplefs_creat("/a.txt", fdfs));
+    int fd = simplefs_open("/a.txt", READ_AND_WRITE, fdfs);
+    CU_ASSERT(0 < fd);
+    CU_ASSERT(OK == simplefs_write(fd, "adam to glupi programista", 15, fdfs));
+    char result[20];
+    simplefs_lseek(fd, SEEK_SET,0,fdfs);
+    CU_ASSERT(10 == simplefs_read(fd, result, 10, fdfs));
+    result[10] = '\0';
+    CU_ASSERT(strcmp("adam to gl", result) == 0);
+    CU_ASSERT(OK == simplefs_unlink("/a.txt", fsfd));
+}
+
 void test_create_100_files() {
     /*simplefs_init("testfs3", 4096, 1024);
     int fsfd;
@@ -230,6 +251,13 @@ int main()
 
     /* add the tests to the suite 2 */
     if ((NULL == CU_add_test(pSuite, "test of simplefs write", test_write)))
+    {
+        CU_cleanup_registry();
+        return CU_get_error();
+    }
+
+    /* add the tests to the suite 3 */
+    if ((NULL == CU_add_test(pSuite, "test of simplefs read", test_read)))
     {
         CU_cleanup_registry();
         return CU_get_error();
