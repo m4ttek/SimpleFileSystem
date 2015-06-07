@@ -119,8 +119,10 @@ void test_unlink() {
  * Funkcje testujące należące do suite 2.
  */
 void test_write() {
-    simplefs_init("testfs2", 4096, 1024);
-    unsigned long data_block_start = 1 + ceil((double) 1024 / (4096 * 8)) + ceil((double) 1024 / floor((double) 4096 / sizeof(inode)));
+    printf ("\n*********** TEST WRITE ***********\n");
+    simplefs_init("testfs2", 4096, 8);
+    unsigned long data_block_start = 1 + ceil((double) 8 / (4096 * 8)) + ceil((double) 8 / floor((double) 4096 / sizeof(inode)));
+    printf("\n\nData block %d , byte start = %d\n\n", data_block_start, (1 + data_block_start) * 4096 );
     CU_ASSERT(-1 != (fsfd = simplefs_openfs("testfs2")));
 
     int fd = -1;
@@ -128,11 +130,42 @@ void test_write() {
     // TODO - nie działa open!!
     CU_ASSERT(0 <= (fd = simplefs_open("/testfile", WRITE_MODE, fsfd)));
     char * buf = "testing file save";
+    printf("\n\nPierwszy zapis do pliku\n\n");
     CU_ASSERT(OK == simplefs_write(fd, buf, 17, fsfd));
-    printf("Data block byte start = %d\n", (1 + data_block_start) * 4096 );
     block * block_pointer = (block *) _read_block(fsfd, 1, data_block_start, 4096);
 
     CU_ASSERT('t' == block_pointer->data[0]);
+
+    // append do istniejącego asserta
+    printf("\n\nDrugi zapis do pliku\n\n");
+    CU_ASSERT(OK == simplefs_write(fd, buf, 17, fsfd));
+    block_pointer = (block *) _read_block(fsfd, 1, data_block_start, 4096);
+    CU_ASSERT('t' == block_pointer->data[17]);
+    /*
+    // append na tyle długi żeby przeszedł na drugi blok
+    char second_bufs[4096];
+    int i;
+    for(i = 0; i < 4096; i++) {
+        second_bufs[i] = 1;
+    }
+    CU_ASSERT(OK == simplefs_write(fd, second_bufs, 4096, fsfd));
+    // sprawdzenie czy dane zapisane poprawnie:
+    block_pointer = (block *) _read_block(fsfd, 1, data_block_start, 4096);
+    block * second_block_pointer = (block *) _read_block(fsfd, 2, data_block_start, 4096);
+    // pierwszy blok
+    for (i = 2 * 17; i < 4096 - sizeof(long); i++) {
+        CU_ASSERT(1 == block_pointer->data[i]);
+        if (1 != block_pointer->data[i]) {
+            break;
+        }
+    }
+    // drugi blok
+    for (i = 0; i < 2 * 17 + sizeof(long); i++) {
+        CU_ASSERT(1 == second_block_pointer->data[i]);
+        if (1 != second_block_pointer->data[i]) {
+            break;
+        }
+    }*/
 
     //clean
     CU_ASSERT(OK == simplefs_unlink("/testfile", fsfd));
@@ -155,7 +188,7 @@ int main()
 
    /* add the tests to the suite */
    /* NOTE - ORDER IS IMPORTANT - MUST TEST fread() AFTER fprintf() */
-   if ((NULL == CU_add_test(pSuite, "test of fprintf()", testFPRINTF)) ||
+   /*if ((NULL == CU_add_test(pSuite, "test of fprintf()", testFPRINTF)) ||
        (NULL == CU_add_test(pSuite, "test of fread()", testFREAD)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs_init", test_initfs)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs openfs", test_openfs)) ||
@@ -166,7 +199,7 @@ int main()
    {
       CU_cleanup_registry();
       return CU_get_error();
-   }
+   }*/
 
     /* add a suite to the registry */
     pSuite = CU_add_suite("Suite_2", init_suite1, clean_suite1);

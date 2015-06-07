@@ -257,6 +257,7 @@ inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* 
         }
         dir_block = _read_block(fd, dir_block->next_data_block, masterblock->data_start_block, masterblock->block_size);
     }
+    printf("wyjscie z get inode in dir\n");
 }
 
 /**
@@ -427,7 +428,7 @@ inode * _load_inode_from_file_structure(initialized_structures * initialized_str
 int _get_blocks_numbers_taken_by_file(int fsfd, unsigned long first_block_no, master_block * master_block_pointer,
                                       int (*for_each_record)(void*, int, void*), void * additional_param, unsigned long * blocks_table) {
     printf("\n**** _get_blocks_numbers_taken_by_file ****\n");
-    //printf("Pierwszy blok: %u\n", blocks_table[0]);
+    printf("Pierwszy blok: %u\n", first_block_no);
 
     block * block_pointer = NULL;
     int i = 0;
@@ -440,6 +441,7 @@ int _get_blocks_numbers_taken_by_file(int fsfd, unsigned long first_block_no, ma
             return -2;
         }
         blocks_table[i++] = block_no;
+        printf("Zapisany numer bloku do tablicy: %d\n", block_no);
         block_no = block_pointer->next_data_block;
         printf("nastepny blok danych: %u\n", block_no);
     } while (block_pointer->next_data_block != 0);
@@ -571,12 +573,12 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     } else {
         blocks_table = (unsigned long *) malloc(sizeof(unsigned long) * number_of_blocks_to_be_taken_by_file);
     }
+    printf("\n\n************\nLiczba wszystkich blokow zajmowanych przez plik: %d, liczba blokow do zajecia: %d\n\n", number_of_all_taken_blocks_by_file, number_of_blocks_to_be_taken_by_file);
     // czy trzeba wyszukać nowe bloki danych dla pliku
     if ((number_of_blocks_to_be_taken_by_file > number_of_all_taken_blocks_by_file)
         || file_inode->first_data_block == 0) {
         // wyszukanie nowych bloków danych
         unsigned int number_of_free_blocks = number_of_blocks_to_be_taken_by_file - number_of_all_taken_blocks_by_file;
-        printf("\n\n************\nLiczba wszystkich blokow zajmowanych przez plik: %d, liczba blokow do zajecia: %d\n\n", number_of_all_taken_blocks_by_file, number_of_blocks_to_be_taken_by_file);
         //nie wiem czemu tak
         long first_operated_block = _find_free_blocks(params.fsfd, initialized_structures_pointer, number_of_free_blocks,
                           blocks_table + number_of_all_taken_blocks_by_file);
@@ -586,6 +588,7 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
             free(blocks_table);
             return NO_FREE_BLOCKS;
         } else if (file_inode->first_data_block == 0) {
+            printf("First operated block: %d\n", first_operated_block);
             file_inode->first_data_block = first_operated_block;
         }
     }
@@ -1264,8 +1267,8 @@ int simplefs_write(int fd, char *buf, int len, int fsfd) { //Mateusz
     if (file_pointer == NULL) {
         return FD_NOT_FOUND;
     }
-    _try_lock_lock_inode(initialized_structures_pointer->block_bitmap_pointer, fsfd);
-    _lock_lock_file(initialized_structures_pointer->block_bitmap_pointer, fsfd);
+    _try_lock_lock_inode(initialized_structures_pointer->master_block_pointer, fsfd);
+    _lock_lock_file(initialized_structures_pointer->master_block_pointer, fsfd);
 
     write_params write_params_structure;
     write_params_structure.data_length = len;
@@ -1277,8 +1280,8 @@ int simplefs_write(int fd, char *buf, int len, int fsfd) { //Mateusz
     write_params_structure.for_each_record = NULL;
     int result = _write_unsafe(initialized_structures_pointer, write_params_structure);
 
-    _unlock_lock_file(initialized_structures_pointer->block_bitmap_pointer, fsfd);
-    _unlock_lock_inode(initialized_structures_pointer->block_bitmap_pointer, fsfd);
+    _unlock_lock_file(initialized_structures_pointer->master_block_pointer, fsfd);
+    _unlock_lock_inode(initialized_structures_pointer->master_block_pointer, fsfd);
 
     _uninitilize_structures(initialized_structures_pointer);
     return result;
