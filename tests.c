@@ -189,7 +189,8 @@ void test_read() {
     CU_ASSERT(fdfs > 0);
     CU_ASSERT(OK == simplefs_creat("/a.txt", fdfs));
     int fd = simplefs_open("/a.txt", READ_AND_WRITE, fdfs);
-    CU_ASSERT(0 < fd);
+    printf("FD %d", fd);
+    CU_ASSERT(0 <= fd);
     CU_ASSERT(OK == simplefs_write(fd, "adam to glupi programista", 15, fdfs));
     char result[20];
     simplefs_lseek(fd, SEEK_SET,0,fdfs);
@@ -208,14 +209,14 @@ void test_read() {
     CU_ASSERT(OK == simplefs_write(fd2, message, READ_TEST_LEN, fdfs));    
     simplefs_lseek(fd2, SEEK_SET, 0, fdfs);
     CU_ASSERT(READ_TEST_LEN == simplefs_read(fd2, read, READ_TEST_LEN, fdfs));
-    for(i = 0; i < 3000; ++i) {
+    for(i = 0; i < READ_TEST_LEN; ++i) {
         if(read[i] != message[i]) {
             CU_ASSERT(0 == 1);
             break;
         }
     }
-    CU_ASSERT(OK == simplefs_unlink("/a.txt", fsfd));
-    CU_ASSERT(OK == simplefs_unlink("/b.txt", fsfd));
+    CU_ASSERT(OK == simplefs_unlink("/a.txt", fdfs));
+    CU_ASSERT(OK == simplefs_unlink("/b.txt", fdfs));
 }
 
 void test_create_100_files() {
