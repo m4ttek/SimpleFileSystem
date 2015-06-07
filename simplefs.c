@@ -738,15 +738,17 @@ int _check_duplicate_file_names_in_block(block* data_block, int block_size, void
     for(i = 0; i < block_size / sizeof(file_signature); i++) {
         printf("wchodze");
         printf("signature node: %d, signature name %s\n", signature->inode_no, signature->name);
+        if(signature->inode_no == 0) {
+            signature++;
+            continue;
+        }
         if(signature->inode_no != 0 && !strcmp(signature->name, (char*) name)) {
             //exists!
             return FALSE;
         }
         printf("Adding %d to signature\n", sizeof(file_signature));
+
         signature++;
-        if(signature->inode_no == 0) {
-            continue;
-        }
     }
     printf("wychodze");
     return TRUE;
@@ -967,9 +969,9 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
             break;
         }
     }
-    free(dir_path);
     unsigned long dir_inode_no;
     inode* dir_inode = _get_inode_by_path(dir_path, structures->master_block_pointer, fsfd, &dir_inode_no);
+    free(dir_path);
 
     _unlock_lock_file(structures->master_block_pointer, fsfd);
     _unlock_lock_inode(structures->master_block_pointer, fsfd);
@@ -1248,9 +1250,9 @@ int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
             memcpy(buf + data_read, current_block->data + position_in_read_block, len - data_read);
             data_read = len;
         }
+        current_block_number = current_block->next_data_block;
         free(current_block->data);
         free(current_block);
-        current_block_number = current_block->next_data_block;
     }
     file_pointer->position += data_read;
     _uninitilize_structures(initialized_structures_pointer);
