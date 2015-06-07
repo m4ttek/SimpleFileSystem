@@ -173,7 +173,7 @@ void test_write() {
     }
 
     //clean
-    //CU_ASSERT(OK == simplefs_unlink("/testfile", fsfd));
+    CU_ASSERT(OK == simplefs_unlink("/testfile", fsfd));
 }
 
 
