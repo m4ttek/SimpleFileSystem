@@ -892,6 +892,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     unsigned long inode_no;
     inode* file_inode = _get_inode_by_path(name, structures->master_block_pointer, fsfd, &inode_no);
     if(file_inode == NULL) {
+        _uninitilize_structures(structures);
         return FILE_DOESNT_EXIST;
     }
 
@@ -906,9 +907,12 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
                 break;
             }
             if(signature.inode_no != 0) {
+                _uninitilize_structures(structures);
+                simplefs_close(file_fd);
                 return DIR_NOT_EMPTY;
             }
         }
+        simplefs_close(file_fd);
     }
     //zwolnienie bloków
     unsigned long blocks_freed = 0;
@@ -921,6 +925,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
         block* current_block = _read_block(fsfd, current_block_no, structures->master_block_pointer->data_start_block,
                                             structures->master_block_pointer->block_size);
         if(current_block_no < first_free_block) {
+            //update first free block no
             structures->master_block_pointer->first_free_block_number = current_block_no;
         }
         current_block_no = current_block->next_data_block;
@@ -930,6 +935,10 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     structures->master_block_pointer->number_of_free_blocks += blocks_freed;
     //mark inode as empty
     structures->inode_table[inode_no].type = INODE_EMPTY;
+    //update first free inode if applicable
+    if(inode_no < structures->master_block_pointer->first_free_inode) {
+        structures->master_block_pointer->first_free_inode = inode_no;
+    }
 
     //remove file signature from parent directory
     char* dir_path = _get_path_for_file(name);
@@ -964,6 +973,8 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     if(_get_lock_counter(fsfd, structures->master_block_pointer) != 0) {
         _try_lock_lock_inode(structures->master_block_pointer, fsfd);
     }
+    _uninitilize_structures(structures);
+    simplefs_close(dir_fd);
     return OK;
 }
 
@@ -1179,6 +1190,7 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
         } else if(write_result == -2) {
             result = FILE_ALREADY_EXISTS;
         }
+        simplefs_close(fd);
     } while( 0 );
     _unlock_lock_file(is->master_block_pointer, fsfd);
     _uninitilize_structures(is);

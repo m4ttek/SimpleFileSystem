@@ -7,6 +7,8 @@
 /* Pointer to the file used by the tests. */
 static FILE* temp_file = NULL;
 
+master_block* initial_masterblock;
+
 int fsfd = -1;
 
 /* The suite initialization function.
@@ -77,6 +79,7 @@ void test_initfs() {
 void test_openfs() {
     CU_ASSERT(-1 == simplefs_openfs("fakefs"));
     CU_ASSERT(-1 != (fsfd = simplefs_openfs("testfs")));
+    initial_masterblock = _get_master_block(fsfd);
 }
 
 void test_creat() {
@@ -86,6 +89,10 @@ void test_creat() {
     CU_ASSERT(OK == simplefs_creat("/testfile1", fsfd));
     CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile", fsfd));
     CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testfile1", fsfd));
+
+    master_block* masterblock = _get_master_block(fsfd);
+    CU_ASSERT(initial_masterblock->number_of_free_blocks == masterblock->number_of_free_blocks + 1);
+    free(masterblock);
 }
 
 void test_mkdir() {
@@ -96,10 +103,16 @@ void test_mkdir() {
 void test_create_file_in_dir() {
     CU_ASSERT(OK == simplefs_creat("/testdir/file_in_dir", fsfd));
     CU_ASSERT(FILE_ALREADY_EXISTS == simplefs_creat("/testdir/file_in_dir", fsfd));
+
+    master_block* masterblock = _get_master_block(fsfd);
+    CU_ASSERT(initial_masterblock->number_of_free_blocks == masterblock->number_of_free_blocks + 2);
+    free(masterblock);
 }
 
 void test_unlink() {
     CU_ASSERT(OK == simplefs_unlink("/testfile", fsfd));
+    master_block* masterblock = _get_master_block(fsfd);
+    CU_ASSERT(initial_masterblock->first_free_inode == masterblock->first_free_inode);
     CU_ASSERT(FILE_DOESNT_EXIST == simplefs_unlink("/testfile", fsfd));
 
     CU_ASSERT(OK == simplefs_unlink("/testfile1", fsfd));
