@@ -126,7 +126,7 @@ void test_write() {
     int fd = -1;
     CU_ASSERT(OK == simplefs_creat("/testfile", fsfd));
     // TODO - nie działa open!!
-    CU_ASSERT(0 < (fd = simplefs_open("/testfile", WRITE_MODE, fsfd)));
+    CU_ASSERT(0 <= (fd = simplefs_open("/testfile", WRITE_MODE, fsfd)));
     char * buf = "testing file save";
     CU_ASSERT(OK == simplefs_write(fd, buf, 17, fsfd));
     printf("Data block byte start = %d\n", (1 + data_block_start) * 4096 );

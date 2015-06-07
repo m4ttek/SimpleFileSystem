@@ -302,10 +302,10 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
 /**
  * Blokuje first free block (ekskluzywnie).
  *
- * @param fd deksryptor systemu plików
+ * @param fsfd deksryptor systemu plików
  * @param fl niewypełniona struktura flock
  */
-int _block_first_free_block(int fd, struct flock * fl) {
+int _block_first_free_block(int fsfd, struct flock * fl) {
     /* F_RDLCK, F_WRLCK, F_UNLCK    */
     fl->l_type = F_WRLCK;
     /* SEEK_SET, SEEK_CUR, SEEK_END */
@@ -313,7 +313,7 @@ int _block_first_free_block(int fd, struct flock * fl) {
     fl->l_start = 32;
     fl->l_len = 8;
     fl->l_pid = getpid();
-    return fcntl(fd, F_SETLKW, fl);
+    return fcntl(fsfd, F_SETLKW, fl);
 }
 
 /**
@@ -322,9 +322,9 @@ int _block_first_free_block(int fd, struct flock * fl) {
  * @param fd deksryptor systemu plików
  * @param fl niewypełniona struktura flock
  */
-int _unblock_first_free_block(int fd, struct flock * fl) {
+int _unblock_first_free_block(int fsfd, struct flock * fl) {
     fl->l_type = F_UNLCK;
-    return fcntl(fd, F_SETLK, fl);
+    return fcntl(fsfd, F_SETLK, fl);
 }
 
 /**
@@ -628,11 +628,11 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
  * Funkcja odczytująca master block z dysku
  * @return odczytany master block
  */
-master_block* _get_master_block(int fd) {
-    printf("get master block. fd = %d\n", fd);
-    lseek(fd, 0, SEEK_SET);
+master_block* _get_master_block(int fsfd) {
+    printf("get master block. fd = %d\n", fsfd);
+    lseek(fsfd, 0, SEEK_SET);
     master_block* masterblock = malloc(sizeof(master_block));
-    read(fd, masterblock, sizeof(master_block));
+    read(fsfd, masterblock, sizeof(master_block));
     printf("Read first inode table block: %d\n", masterblock->first_inode_table_block);
     printf("Sizeof block_size is %d\n", sizeof(masterblock->block_size));
     return masterblock;
@@ -663,7 +663,7 @@ char* _get_path_for_file(char* full_path) {
  * Funkcja umieszczająca bezpiecznie inode w pierwszym wolnym miejscu
  * @return numer umieszczonego inode'u
  */
-unsigned long _insert_new_inode(inode* new_inode, initialized_structures* structures, int fd) {
+unsigned long _insert_new_inode(inode* new_inode, initialized_structures* structures, int fsfd) {
     struct flock lock;
     lock.l_type = F_RDLCK + F_WRLCK;
     lock.l_whence = SEEK_SET;
@@ -672,12 +672,12 @@ unsigned long _insert_new_inode(inode* new_inode, initialized_structures* struct
     lock.l_pid = getpid();
 printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_pointer);
     //lock first free inode in master block
-    fcntl(fd, F_SETLKW, &lock);
+    fcntl(fsfd, F_SETLKW, &lock);
     printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_pointer);
     unsigned long inode_no = structures->master_block_pointer->first_free_inode;
     if(inode_no == 0) {
         lock.l_type = F_UNLCK;
-        fcntl(fd, F_SETLK, &lock);
+        fcntl(fsfd, F_SETLK, &lock);
         return 0;
     }
     structures->inode_table[inode_no] = *new_inode;
@@ -688,7 +688,7 @@ printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_
         if(structures->inode_table[i].type == INODE_EMPTY) {
             structures->master_block_pointer->first_free_inode = i;
             lock.l_type = F_UNLCK;
-            fcntl(fd, F_SETLK, &lock);
+            fcntl(fsfd, F_SETLK, &lock);
             return inode_no;
         }
     }
@@ -696,7 +696,7 @@ printf("Writing new inode: masterblock pointer: %d\n", structures->master_block_
     //unlock
     structures->master_block_pointer->first_free_inode = 0;
     lock.l_type = F_UNLCK;
-    fcntl(fd, F_SETLK, &lock);
+    fcntl(fsfd, F_SETLK, &lock);
     return inode_no;
     /*int block_no = inode_no/INODES_IN_BLOCK;
     while(block_no < masterblock->data_start_block) {
@@ -912,7 +912,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
                 return DIR_NOT_EMPTY;
             }
         }
-        //simplefs_close(file_fd);
+        simplefs_close(file_fd);
     }
     //zwolnienie bloków
     unsigned long blocks_freed = 0;
@@ -974,7 +974,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
         _try_lock_lock_inode(structures->master_block_pointer, fsfd);
     }
     _uninitilize_structures(structures);
-    //simplefs_close(dir_fd);
+    simplefs_close(dir_fd);
     return OK;
 }
 
@@ -1017,7 +1017,7 @@ int simplefs_mkdir(char *name, int fsfd) { //Michal
     return 0;*/
 }
 
-void _try_lock_lock_inode(master_block * mb, int fd) {
+void _try_lock_lock_inode(master_block * mb, int fsfd) {
     //lock inode
     struct flock lock_inode;
     lock_inode.l_type = F_WRLCK;
@@ -1025,10 +1025,10 @@ void _try_lock_lock_inode(master_block * mb, int fd) {
     lock_inode.l_start = (mb->first_inode_table_block * mb->block_size + sizeof(inode) * 1);
     lock_inode.l_len = sizeof(inode);
     lock_inode.l_pid = getpid();
-    fcntl(fd, F_SETLK, &lock_inode);
+    fcntl(fsfd, F_SETLK, &lock_inode);
 }
 
-void _lock_lock_inode(master_block * mb, int fd) {
+void _lock_lock_inode(master_block * mb, int fsfd) {
     //lock inode
     struct flock lock_inode;
     lock_inode.l_type = F_WRLCK;
@@ -1036,10 +1036,10 @@ void _lock_lock_inode(master_block * mb, int fd) {
     lock_inode.l_start = (mb->first_inode_table_block * mb->block_size + sizeof(inode) * 1);
     lock_inode.l_len = sizeof(inode);
     lock_inode.l_pid = getpid();
-    fcntl(fd, F_SETLKW, &lock_inode);
+    fcntl(fsfd, F_SETLKW, &lock_inode);
 }
 
-void _unlock_lock_inode(master_block * mb, int fd) {
+void _unlock_lock_inode(master_block * mb, int fsfd) {
     //lock inode
     struct flock lock_inode;
     lock_inode.l_type = F_UNLCK;
@@ -1047,11 +1047,11 @@ void _unlock_lock_inode(master_block * mb, int fd) {
     lock_inode.l_start = (mb->first_inode_table_block * mb->block_size + sizeof(inode) * 1);
     lock_inode.l_len = sizeof(inode);
     lock_inode.l_pid = getpid();
-    fcntl(fd, F_SETLK, &lock_inode);
+    fcntl(fsfd, F_SETLK, &lock_inode);
 }
 
-void _lock_lock_file(master_block * mb, int fd) {
-    _try_lock_lock_inode(mb, fd);
+void _lock_lock_file(master_block * mb, int fsfd) {
+    _try_lock_lock_inode(mb, fsfd);
     //lock lock block
     struct flock lock_block;
     lock_block.l_type = F_WRLCK;
@@ -1059,10 +1059,10 @@ void _lock_lock_file(master_block * mb, int fd) {
     lock_block.l_start = (mb->data_start_block);
     lock_block.l_len = mb->block_size;
     lock_block.l_pid = getpid();
-    fcntl(fd, F_SETLKW, &lock_block);
+    fcntl(fsfd, F_SETLKW, &lock_block);
     unsigned delta;
     int * counter = (int *) mmap_enhanced(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED,
-                    fd, mb->data_start_block * mb->block_size, &delta);
+                    fsfd, mb->data_start_block * mb->block_size, &delta);
     printf("Printing master block data. data start block = %d, block size = %d\n", mb->data_start_block, mb->block_size);
     printf("mmapped counter, address = %d\n", counter);
     printf("Co wychodzi? %X\n", (mb->data_start_block * mb->block_size) & ~(sysconf(_SC_PAGE_SIZE) - 1));
@@ -1072,10 +1072,10 @@ void _lock_lock_file(master_block * mb, int fd) {
     printf("Munmap result = %d\n", munmap_enhanced(counter, sizeof(int), delta));
     //unlock lock block
     lock_block.l_type = F_UNLCK;
-    fcntl(fd, F_SETLK, &lock_block);
+    fcntl(fsfd, F_SETLK, &lock_block);
 }
 
-void _unlock_lock_file(master_block * mb, int fd) {
+void _unlock_lock_file(master_block * mb, int fsfd) {
     //lock lock block
     struct flock lock_block;
     lock_block.l_type = F_WRLCK;
@@ -1083,25 +1083,25 @@ void _unlock_lock_file(master_block * mb, int fd) {
     lock_block.l_start = (mb->data_start_block);
     lock_block.l_len = mb->block_size;
     lock_block.l_pid = getpid();
-    fcntl(fd, F_SETLKW, &lock_block);
+    fcntl(fsfd, F_SETLKW, &lock_block);
     unsigned delta;
     int * counter = (int *) mmap_enhanced(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED,
-                    fd, mb->data_start_block * mb->block_size, &delta);
+                    fsfd, mb->data_start_block * mb->block_size, &delta);
     (*counter)--;
     int value = *counter;
     munmap_enhanced(counter, sizeof(int), delta);
     if(value != 0) {
-        _try_lock_lock_inode(mb, fd);
+        _try_lock_lock_inode(mb, fsfd);
     } else {
-        _unlock_lock_inode(mb, fd);
+        _unlock_lock_inode(mb, fsfd);
     }
     //unlock lock block
     lock_block.l_type = F_UNLCK;
-    fcntl(fd, F_SETLK, &lock_block);
+    fcntl(fsfd, F_SETLK, &lock_block);
 }
 
-int _get_lock_counter(int fd, master_block* masterblock) {
-    block* lock_block = _read_block(fd, 0, masterblock->data_start_block, masterblock->block_size);
+int _get_lock_counter(int fsfd, master_block* masterblock) {
+    block* lock_block = _read_block(fsfd, 0, masterblock->data_start_block, masterblock->block_size);
     int counter = *((int*) lock_block->data);
     free(lock_block);
     return counter;
@@ -1224,7 +1224,7 @@ int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
     unsigned long block_data_size =  masterblock->block_size - sizeof(t.next_data_block); //realny rozmiar bloku
     //przesuwamu sie przez dane które nasz position ignoruje
     while(current_position + block_data_size <= position && current_block_number != 0) {
-        current_block_number = _find_next_block(fd, current_block_number,  masterblock->data_start_block, masterblock->block_size);
+        current_block_number = _find_next_block(fsfd, current_block_number,  masterblock->data_start_block, masterblock->block_size);
         current_position += block_data_size;
     }
     unsigned long data_read = 0;
