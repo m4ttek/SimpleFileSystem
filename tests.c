@@ -126,6 +126,7 @@ void test_write() {
     unsigned long data_block_start = 1 + ceil((double) 8 / (4096 * 8)) + ceil((double) 8 / floor((double) 4096 / sizeof(inode)));
     printf("\n\nData block %d , byte start = %d\n\n", data_block_start, (1 + data_block_start) * 4096 );
     CU_ASSERT(-1 != (fsfd = simplefs_openfs("testfs2")));
+   master_block* master_block = _get_master_block(fsfd);
 
     int fd = -1;
     CU_ASSERT(OK == simplefs_creat("/testfile", fsfd));
@@ -206,7 +207,7 @@ void test_read() {
         message[i] = 'a' + i % 26;
         read[i] = 0;
     }
-    CU_ASSERT(OK == simplefs_write(fd2, message, READ_TEST_LEN, fdfs));    
+    CU_ASSERT(OK == simplefs_write(fd2, message, READ_TEST_LEN, fdfs));
     simplefs_lseek(fd2, SEEK_SET, 0, fdfs);
     CU_ASSERT(READ_TEST_LEN == simplefs_read(fd2, read, READ_TEST_LEN, fdfs));
     for(i = 0; i < READ_TEST_LEN; ++i) {

@@ -518,7 +518,7 @@ void _save_buffer_to_file(initialized_structures * initialized_structures_pointe
         // przesunięcie wskaznika na koniec bloku dla zapisania informacji o następnym numerze bloku
         lseek(params->fsfd, block_offset + real_block_size, SEEK_SET);
 
-        printf("\nZapis wskaznika na nastepny number bloku, block_to_start = %d, number_of_all_blocks = %d, blocks_table[block_to_start + 1] = %d\n", block_to_start, number_of_all_blocks, blocks_table[block_to_start + 1]);
+        //printf("\nZapis wskaznika na nastepny number bloku, block_to_start = %d, number_of_all_blocks = %d, blocks_table[block_to_start + 1] = %d\n", block_to_start, number_of_all_blocks, blocks_table[block_to_start + 1]);
         // zapisanie wskaznika na następny numer bloku
         if (block_to_start != number_of_all_blocks - 1) {
             printf("Zapis!\n");
@@ -944,14 +944,13 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     //zwolnienie bloków
     unsigned long blocks_freed = 0;
     unsigned long current_block_no = file_inode->first_data_block;
-    unsigned long first_free_block = structures->master_block_pointer->first_free_block_number;
     while(current_block_no != 0) {
         unsigned long bitmap_block_no = current_block_no / (8 * structures->master_block_pointer->block_size);
         char bit_offset = current_block_no % (8 * structures->master_block_pointer->block_size);
         structures->block_bitmap_pointer[bitmap_block_no] &= ~(1 << bit_offset);
         block* current_block = _read_block(fsfd, current_block_no, structures->master_block_pointer->data_start_block,
                                             structures->master_block_pointer->block_size);
-        if(current_block_no < first_free_block) {
+        if(current_block_no < structures->master_block_pointer->first_free_block_number) {
             //update first free block no
             structures->master_block_pointer->first_free_block_number = current_block_no;
         }
@@ -960,12 +959,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
         free(current_block);
     }
     structures->master_block_pointer->number_of_free_blocks += blocks_freed;
-    //mark inode as empty
-    structures->inode_table[inode_no].type = INODE_EMPTY;
-    //update first free inode if applicable
-    if(inode_no < structures->master_block_pointer->first_free_inode) {
-        structures->master_block_pointer->first_free_inode = inode_no;
-    }
+    _mark_inode_as_empty(structures, inode_no);
 
     //remove file signature from parent directory
     char* dir_path = _get_path_for_file(name);
@@ -1132,6 +1126,18 @@ int _get_lock_counter(int fsfd, master_block* masterblock) {
     int counter = *((int*) lock_block->data);
     free(lock_block);
     return counter;
+}
+
+/**
+ * Funkcja oznaczajaca inode jako pusty i uaktualniająca w masterblocku wpis pierwszego wolnego inode'u, jeśli to konieczne
+ */
+void _mark_inode_as_empty(initialized_structures* structures, unsigned long inode_no) {
+    //mark inode as empty
+    structures->inode_table[inode_no].type = INODE_EMPTY;
+    //update first free inode if applicable
+    if(inode_no < structures->master_block_pointer->first_free_inode) {
+        structures->master_block_pointer->first_free_inode = inode_no;
+    }
 }
 
 int simplefs_close(int fd) {
