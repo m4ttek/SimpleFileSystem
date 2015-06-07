@@ -1004,6 +1004,9 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     //remove file signature from parent directory
     char* dir_path = _get_path_for_file(name);
     int dir_fd = simplefs_open(dir_path, READ_AND_WRITE, fsfd);
+    unsigned block_data_size = structures->master_block_pointer->block_size - sizeof(long);
+    unsigned signatures_in_block = block_data_size / sizeof(file_signature);
+    unsigned dir_block_padding = block_data_size % sizeof(file_signature);
     int i;
     for(i = 0;;i++) {
         file_signature signature;
@@ -1024,6 +1027,10 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
             params.for_each_record = NULL;
             _write_unsafe(structures, params);
             break;
+        }
+        //kiedy w bloku nie mieści się więcej sygnatur, przeskocz o różnicę
+        if((i + 1) % signatures_in_block == 0) {
+            simplefs_lseek(dir_fd, SEEK_CUR, dir_block_padding, fsfd);
         }
     }
     unsigned long dir_inode_no;
