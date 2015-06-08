@@ -1392,6 +1392,9 @@ int simplefs_lseek(int fd, int whence, int offset, int fsfd) { //Mateusz
             break;
         case SEEK_CUR:
             effective_offset = file_pointer->position + offset;
+            if (effective_offset < 0) {
+                effective_offset = 0;
+            }
             break;
         case SEEK_END:
             effective_offset = _load_inode_from_file_structure(initialized_structures_pointer, file_pointer)->size + offset;

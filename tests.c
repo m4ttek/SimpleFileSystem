@@ -31,6 +31,7 @@ int clean_suite1(void)
 
 int init_suite2(void) {
     remove("testfs2");
+    simplefs_init("testfs2", 4096, 5);
     return 0;
 }
 
@@ -140,30 +141,31 @@ void test_creat_and_unlink() {
 /*
  * Funkcje testujące należące do suite 2.
  */
+
+int testfile_fd;
+
 void test_write() {
     printf ("\n*********** TEST WRITE ***********\n");
-    simplefs_init("testfs2", 4096, 5);
     unsigned long data_block_start = 1 + ceil((double) 5 / (4096 * 8)) + ceil((double) 5 / floor((double) 4096 / sizeof(inode)));
     printf("\n\nData block %d , byte start = %d\n\n", data_block_start, (1 + data_block_start) * 4096 );
     CU_ASSERT(-1 != (fsfd = simplefs_openfs("testfs2")));
-   master_block* master_block = _get_master_block(fsfd);
+    master_block* master_block = _get_master_block(fsfd);
 
-    int fd = -1;
     CU_ASSERT(OK == simplefs_creat("/testfile", fsfd));
-    CU_ASSERT(0 <= (fd = simplefs_open("/testfile", WRITE_MODE, fsfd)));
-    if (fd < 0) {
+    CU_ASSERT(0 <= (testfile_fd = simplefs_open("/testfile", WRITE_MODE, fsfd)));
+    if (testfile_fd < 0) {
         return;
     }
     char *buf = "testing file save";
     printf("\n\nPierwszy zapis do pliku\n\n");
-    CU_ASSERT(OK == simplefs_write(fd, buf, 17, fsfd));
+    CU_ASSERT(OK == simplefs_write(testfile_fd, buf, 17, fsfd));
     block * block_pointer = (block *) _read_block(fsfd, 2, data_block_start, 4096);
 
     CU_ASSERT('t' == block_pointer->data[0]);
 
     // append do istniejącego asserta
     printf("\n\nDrugi zapis do pliku\n\n");
-    CU_ASSERT(OK == simplefs_write(fd, buf, 17, fsfd));
+    CU_ASSERT(OK == simplefs_write(testfile_fd, buf, 17, fsfd));
     block_pointer = (block *) _read_block(fsfd, 2, data_block_start, 4096);
     CU_ASSERT('t' == block_pointer->data[0]);
     CU_ASSERT('t' == block_pointer->data[17]);
@@ -176,7 +178,7 @@ void test_write() {
     }
 
     printf("\n\nZapis dużej dawki jedynek\n\n");
-    CU_ASSERT(OK == simplefs_write(fd, second_bufs, 4096, fsfd));
+    CU_ASSERT(OK == simplefs_write(testfile_fd, second_bufs, 4096, fsfd));
     // sprawdzenie czy dane zapisane poprawnie:
     block_pointer = (block *) _read_block(fsfd, 2, data_block_start, 4096);
     block * second_block_pointer = (block *) _read_block(fsfd, 3, data_block_start, 4096);
@@ -196,7 +198,7 @@ void test_write() {
     }
 
     printf("\n\nZapis następnej dawki jedynek, który nie powinien zostać zapisany z powodu niewystarczającej ilości miejsca\n\n");
-    CU_ASSERT(NO_FREE_BLOCKS == simplefs_write(fd, second_bufs, 4096, fsfd));
+    CU_ASSERT(NO_FREE_BLOCKS == simplefs_write(testfile_fd, second_bufs, 4096, fsfd));
     block * third_block_pointer = (block *) _read_block(fsfd, 3, data_block_start, 4096);
     for (i = 2 * 17 + sizeof(long); i < 4096 - sizeof(long); i++) {
         CU_ASSERT(1 != third_block_pointer->data[i]);
@@ -204,9 +206,48 @@ void test_write() {
             break;
         }
     }
+}
 
-    //clean
-    CU_ASSERT(OK == simplefs_unlink("/testfile", fsfd));
+void test_lseek_read() {
+    char buf[4096];
+    // przetestowanie przesunięcia się na początek
+    simplefs_lseek(testfile_fd, SEEK_SET, 0, fsfd);
+    simplefs_read(testfile_fd, buf, 17, fsfd);
+    buf[17] = 0;
+    CU_ASSERT(0 == strcmp(buf, "testing file save"));
+
+    // przetestowanie przesunięcia się do tyłu
+    simplefs_lseek(testfile_fd, SEEK_CUR, -16, fsfd);
+    simplefs_read(testfile_fd, buf, 16, fsfd);
+    buf[16] = 0;
+    CU_ASSERT(0 == strcmp(buf, "esting file save"));
+
+    // przetestowanie cofnięcia się o zbyt dużą liczbę
+    simplefs_lseek(testfile_fd, SEEK_CUR, -100, fsfd);
+    simplefs_read(testfile_fd, buf, 17, fsfd);
+    buf[17] = 0;
+    CU_ASSERT(0 == strcmp(buf, "testing file save"));
+
+    // przetestowanie przesunięcia się na następny blok danych
+    simplefs_lseek(testfile_fd, SEEK_SET, 4096 - sizeof(long), fsfd);
+    simplefs_read(testfile_fd, buf, 20, fsfd);
+    int i = 0;
+    for (i; i < 20; i++) {
+        CU_ASSERT(1 == buf[i]);
+    }
+
+    // przetestowanie przesunięcia się na koniec pliku
+    simplefs_lseek(testfile_fd, SEEK_END, -20, fsfd);
+    simplefs_read(testfile_fd, buf, 20, fsfd);
+    i = 0;
+    for (i; i < 20; i++) {
+        CU_ASSERT(1 == buf[i]);
+    }
+
+    // przetestowanie przesunięcia poza koniec pliku
+    simplefs_lseek(testfile_fd, SEEK_END, 0, fsfd);
+    CU_ASSERT(0 == simplefs_read(testfile_fd, buf, 20, fsfd));
+    
 }
 
 
@@ -336,7 +377,8 @@ int main()
     }
 
     /* add the tests to the suite 2 */
-    if ((NULL == CU_add_test(pSuite, "test of simplefs write", test_write)))
+    if ((NULL == CU_add_test(pSuite, "test of simplefs write", test_write)) ||
+        (NULL == CU_add_test(pSuite, "test of simplefs write", test_lseek_read)))
     {
         CU_cleanup_registry();
         return CU_get_error();
