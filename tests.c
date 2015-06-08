@@ -29,6 +29,16 @@ int clean_suite1(void)
     return 0;
 }
 
+int init_suite2(void) {
+    remove("testfs2");
+    return 0;
+}
+
+int clean_suite2(void) {
+    return 0;
+}
+
+
 /* Simple test of fprintf().
  * Writes test data to the temporary file and checks
  * whether the expected number of bytes were written.
@@ -132,8 +142,8 @@ void test_creat_and_unlink() {
  */
 void test_write() {
     printf ("\n*********** TEST WRITE ***********\n");
-    simplefs_init("testfs2", 4096, 9);
-    unsigned long data_block_start = 1 + ceil((double) 9 / (4096 * 8)) + ceil((double) 9 / floor((double) 4096 / sizeof(inode)));
+    simplefs_init("testfs2", 4096, 5);
+    unsigned long data_block_start = 1 + ceil((double) 5 / (4096 * 8)) + ceil((double) 5 / floor((double) 4096 / sizeof(inode)));
     printf("\n\nData block %d , byte start = %d\n\n", data_block_start, (1 + data_block_start) * 4096 );
     CU_ASSERT(-1 != (fsfd = simplefs_openfs("testfs2")));
    master_block* master_block = _get_master_block(fsfd);
@@ -144,7 +154,7 @@ void test_write() {
     if (fd < 0) {
         return;
     }
-    char * buf = "testing file save";
+    char *buf = "testing file save";
     printf("\n\nPierwszy zapis do pliku\n\n");
     CU_ASSERT(OK == simplefs_write(fd, buf, 17, fsfd));
     block * block_pointer = (block *) _read_block(fsfd, 2, data_block_start, 4096);
@@ -181,6 +191,16 @@ void test_write() {
     for (i = 0; i < 2 * 17 + sizeof(long); i++) {
         CU_ASSERT(1 == second_block_pointer->data[i]);
         if (1 != second_block_pointer->data[i]) {
+            break;
+        }
+    }
+
+    printf("\n\nZapis następnej dawki jedynek, który nie powinien zostać zapisany z powodu niewystarczającej ilości miejsca\n\n");
+    CU_ASSERT(NO_FREE_BLOCKS == simplefs_write(fd, second_bufs, 4096, fsfd));
+    block * third_block_pointer = (block *) _read_block(fsfd, 3, data_block_start, 4096);
+    for (i = 2 * 17 + sizeof(long); i < 4096 - sizeof(long); i++) {
+        CU_ASSERT(1 != third_block_pointer->data[i]);
+        if (1 == third_block_pointer->data[i]) {
             break;
         }
     }
@@ -309,7 +329,7 @@ int main()
    }
 
     /* add a suite to the registry */
-    pSuite = CU_add_suite("Suite_2", init_suite1, clean_suite1);
+    pSuite = CU_add_suite("Suite_2", init_suite2, clean_suite2);
     if (NULL == pSuite) {
         CU_cleanup_registry();
         return CU_get_error();
