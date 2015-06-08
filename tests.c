@@ -17,7 +17,7 @@ int fsfd = -1;
 int init_suite1(void)
 {
     unlink("testfs");
-    return simplefs_init("testfs", 4096, 16);
+    return simplefs_init("testfs", 4096, 128);
 }
 
 /* The suite cleanup function.
@@ -73,11 +73,6 @@ void testFREAD(void)
    }
 }
 
-void test_initfs() {
-   // CU_ASSERT(0 == simplefs_init("testfs", 4096, 1024));
-   simplefs_init("testfs", 4096, 16);
-}
-
 void test_openfs() {
     CU_ASSERT(-1 == simplefs_openfs("fakefs"));
     CU_ASSERT(-1 != (fsfd = simplefs_openfs("testfs")));
@@ -126,7 +121,7 @@ void test_unlink() {
 
 void test_creat_and_unlink() {
     int i = 0;
-    while(i < 10000) {
+    /*while(i < 10000) {
         int result;
         CU_ASSERT(OK == (result = simplefs_creat("/ads", fsfd)));
         if (result != OK) {
@@ -137,6 +132,19 @@ void test_creat_and_unlink() {
             break;
         }
         i++;
+    }*/
+}
+
+void test_2_creat_and_unlink() {
+    int i;
+    for(i = 0; i < 100; i++) {
+        char buf[10];
+        sprintf(buf, "/%d", i);
+        int result = simplefs_creat(buf, fsfd);
+        CU_ASSERT(OK == result);
+        if(result != OK) {
+            printf("DUpa");
+        }
     }
 }
 
@@ -381,14 +389,14 @@ int main()
    /* NOTE - ORDER IS IMPORTANT - MUST TEST fread() AFTER fprintf() */
    if ((NULL == CU_add_test(pSuite, "test of fprintf()", testFPRINTF)) ||
        (NULL == CU_add_test(pSuite, "test of fread()", testFREAD)) ||
-       (NULL == CU_add_test(pSuite, "test of simplefs_init", test_initfs)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs openfs", test_openfs)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs creat", test_creat)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs mkdir", test_mkdir)) ||
        (NULL == CU_add_test(pSuite, "test of creating file in a directory", test_create_file_in_dir)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs unlink", test_unlink)) ||
        (NULL == CU_add_test(pSuite, "test of creating 100 files", test_create_100_files)) ||
-       (NULL == CU_add_test(pSuite, "test of creating and droping till bugg", test_creat_and_unlink)))
+       (NULL == CU_add_test(pSuite, "test of creating and droping till bugg", test_creat_and_unlink)) ||
+       (NULL == CU_add_test(pSuite, "test 2 of creating and droping till bugg", test_2_creat_and_unlink)))
    {
       CU_cleanup_registry();
       return CU_get_error();
