@@ -110,6 +110,22 @@ void test_unlink() {
 
 }
 
+void test_creat_and_unlink() {
+    int i = 0;
+    while(i < 10000) {
+        int result;
+        CU_ASSERT(OK == (result = simplefs_creat("/ads", fsfd)));
+        if (result != OK) {
+            break;
+        }
+        CU_ASSERT(OK == (result = simplefs_unlink("/ads", fsfd)));
+        if (result != OK) {
+            break;
+        }
+        i++;
+    }
+}
+
 /*
  * Funkcje testujące należące do suite 2.
  */
@@ -283,7 +299,8 @@ int main()
        (NULL == CU_add_test(pSuite, "test of simplefs mkdir", test_mkdir)) ||
        (NULL == CU_add_test(pSuite, "test of creating file in a directory", test_create_file_in_dir)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs unlink", test_unlink)) ||
-       (NULL == CU_add_test(pSuite, "test of creating 100 files", test_create_100_files)))
+       (NULL == CU_add_test(pSuite, "test of creating 100 files", test_create_100_files)) ||
+       (NULL == CU_add_test(pSuite, "test of creating and droping till bugg", test_creat_and_unlink)))
    {
       CU_cleanup_registry();
       return CU_get_error();
@@ -310,6 +327,8 @@ int main()
         CU_cleanup_registry();
         return CU_get_error();
     }
+
+
 
     /* add a suite to the registry */
     /*pSuite = CU_add_suite("Suite_3", init_suite1, clean_suite1);
