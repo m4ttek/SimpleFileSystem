@@ -137,8 +137,8 @@ void test_creat_and_unlink() {
 
 void test_2_creat_and_unlink() {
     int i;
-    for(i = 0; i < 100; i++) {
         char buf[10];
+    for(i = 0; i < 1000; i++) {
         sprintf(buf, "/%d", i);
         int result = simplefs_creat(buf, fsfd);
         CU_ASSERT(OK == result);
@@ -146,6 +146,12 @@ void test_2_creat_and_unlink() {
             printf("DUpa");
         }
     }
+    /*simplefs_creat(buf, fsfd);
+    simplefs_creat(buf, fsfd);
+    simplefs_creat(buf, fsfd);
+    simplefs_creat(buf, fsfd);
+    simplefs_creat(buf, fsfd);
+    simplefs_creat(buf, fsfd);*/
 }
 
 /*
@@ -262,6 +268,7 @@ void test_lseek_read() {
 
 void test_lseek_write() {
     char buf[4096];
+    memset(buf, 0, 4096);
     char * buf_test = "test";
     // sprawdzenie czy przy wricie uaktalniana jest pozycja pliku
     simplefs_lseek(testfile_fd, SEEK_SET, 0, fsfd);
