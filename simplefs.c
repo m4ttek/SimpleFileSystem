@@ -473,7 +473,7 @@ void _lock_file_blocks(int fsfd, master_block * master_block_pointer, unsigned l
     for (idx; idx < number_of_blocks; idx++) {
         unsigned long block_offset = _get_block_offset(master_block_pointer, blocks_table[idx]);
         DEBUG("Offset dla bloku: %u, wynosi: %u", blocks_table[idx], block_offset);
-        struct flock * flock_str = flock_structures + (idx * sizeof(flock_structures));
+        struct flock * flock_str = flock_structures + idx;
         flock_str->l_type = F_WRLCK;
         flock_str->l_whence = SEEK_SET;
         flock_str->l_start = block_offset;
@@ -489,7 +489,7 @@ void _lock_file_blocks(int fsfd, master_block * master_block_pointer, unsigned l
 void _unlock_file_blocks(int fsfd, struct flock * flock_structures, unsigned long number_of_flocks) {
     unsigned int idx = 0;
     for (idx; idx < number_of_flocks; idx++) {
-        struct flock * flock_str = flock_structures + (idx * sizeof(flock_structures));
+        struct flock * flock_str = flock_structures + idx;
         flock_str->l_type = F_UNLCK;
         fcntl(fsfd, F_SETLK, flock_str);
     }
