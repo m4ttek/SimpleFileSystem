@@ -503,7 +503,7 @@ void _save_buffer_to_file(initialized_structures * initialized_structures_pointe
     master_block * master_block_pointer = initialized_structures_pointer->master_block_pointer;
     unsigned int real_block_size = master_block_pointer->block_size - sizeof(long);
     unsigned long block_to_start = real_file_offset / real_block_size;
-    unsigned int number_of_all_blocks_be_written = 1 + ((params->data_length - 1) / real_block_size);
+    unsigned int number_of_all_blocks_be_written = block_to_start + 1 + ((params->data_length - 1) / real_block_size);
 
     unsigned int additional_block_offset = real_file_offset % real_block_size;
     unsigned int data_offset = 0;
@@ -1008,6 +1008,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
     for(i = 0;;i++) {
         file_signature signature;
         simplefs_read(dir_fd, (char*) &signature, sizeof(file_signature), fsfd);
+        printf("\n\n\n%d. signature.inode_no = %d, strcmp = %d, signature.name = %s, name = %s\n\n\n", i, signature.inode_no, strcmp(signature.name, name + filename_position + 1), signature.name, name + filename_position + 1);
         if(strcmp(signature.name, name + filename_position + 1) == 0 && signature.inode_no != 0) {
             //clear
             signature.inode_no = 0;
