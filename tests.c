@@ -16,12 +16,8 @@ int fsfd = -1;
  */
 int init_suite1(void)
 {
-   if (NULL == (temp_file = fopen("temp.txt", "w+"))) {
-      return -1;
-   }
-   else {
-      return 0;
-   }
+    unlink("testfs");
+    simplefs_init("testfs", 4096, 16);
 }
 
 /* The suite cleanup function.
@@ -30,13 +26,6 @@ int init_suite1(void)
  */
 int clean_suite1(void)
 {
-   if (0 != fclose(temp_file)) {
-      return -1;
-   }
-   else {
-      temp_file = NULL;
-      return 0;
-   }
 }
 
 /* Simple test of fprintf().
