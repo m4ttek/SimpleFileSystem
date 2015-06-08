@@ -1243,7 +1243,8 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
         new_file.first_data_block = 0;
         unsigned long inode_no = _insert_new_inode(&new_file, is, fsfd);
         if(inode_no == 0) {
-            return NO_FREE_INODES;
+            result =  NO_FREE_INODES;
+            break;
         }
         printf("Inserted new inofde: %lu\n", inode_no);
         path[path_length] = '\0'; //przerobic katalog na plik
@@ -1267,12 +1268,12 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
         } else if(write_result == -2) {
             result = FILE_ALREADY_EXISTS;
         }
-        //rolback got inode
-        if(result < 0) {
+        //rolback inode got but eventually not used
+        if(result == NO_FREE_BLOCKS || result == FILE_ALREADY_EXISTS) {
             _mark_inode_as_empty(is, inode_no);
         }
         simplefs_close(fd);
-    } while( 0 );
+    } while( FALSE );
     _unlock_lock_file(is->master_block_pointer, fsfd);
     _uninitilize_structures(is);
     free(parent_node);
