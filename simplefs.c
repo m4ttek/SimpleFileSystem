@@ -21,7 +21,7 @@ pthread_mutex_t open_files_write_mutex = PTHREAD_MUTEX_INITIALIZER;
  * ---------------------------------------------------------------------------------------------------------------------
  */
 
-#define DEBUG //printf
+#define DEBUG printf
 
 typedef struct write_params_t {
     int fsfd;               // deskryptor systemu plików
@@ -1308,13 +1308,22 @@ int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
     if(file_pointer == NULL) {
         return FD_NOT_FOUND;
     }
+    _lock_lock_file(initialized_structures_pointer->master_block_pointer, fsfd);
+    unsigned long size = _load_inode_from_file_structure(initialized_structures_pointer, file_pointer)->size;
+    _unlock_lock_file(initialized_structures_pointer->master_block_pointer, fsfd);
     unsigned long position = file_pointer->position;
+    if(position >= size) {
+        _uninitilize_structures(initialized_structures_pointer);
+        return 0;
+    }
+
+
     unsigned long current_block_number = _load_inode_from_file_structure(initialized_structures_pointer, file_pointer)->first_data_block;
     unsigned long current_position = 0;
     block t;
     unsigned long block_data_size =  masterblock->block_size - sizeof(t.next_data_block); //realny rozmiar bloku
     //przesuwamu sie przez dane które nasz position ignoruje
-    while(current_position + block_data_size <= position && current_block_number != 0) {
+    while (current_position + block_data_size <= position && current_block_number != 0) {
         current_block_number = _find_next_block(fsfd, current_block_number,  masterblock->data_start_block, masterblock->block_size);
         current_position += block_data_size;
     }
