@@ -57,7 +57,7 @@ master_block get_initial_master_block(unsigned block_size, unsigned number_of_bl
     DEBUG("Setting block size to %d\n", block_size);
     masterblock.block_size = block_size;
     masterblock.number_of_blocks = number_of_blocks;
-    masterblock.number_of_free_blocks = number_of_blocks;
+    masterblock.number_of_free_blocks = number_of_blocks - 1;
     masterblock.first_free_block_number = 1;
     masterblock.number_of_bitmap_blocks = ceil((double) number_of_blocks / (block_size * 8));
     masterblock.number_of_inode_table_blocks = ceil((double) number_of_blocks / floor((double) block_size / sizeof(inode)));
@@ -349,7 +349,7 @@ long _find_free_blocks(int fsfd, initialized_structures * initialized_structures
                       unsigned long * free_blocks) {
     DEBUG("In _find_free_blocks. free blocks = %d\n", number_of_free_blocks);
     master_block * master_block = initialized_structures_pointer->master_block_pointer;
-    if (master_block->number_of_free_blocks == 0) {
+    if (master_block->number_of_free_blocks <= number_of_free_blocks) {
         return NO_FREE_BLOCKS;
     }
     unsigned long first_free_block_number = master_block->first_free_block_number;
@@ -384,7 +384,7 @@ long _find_free_blocks(int fsfd, initialized_structures * initialized_structures
         DEBUG("przed whilem\n");
         // wyszkanie następnego wolnego bloku, a w nim wolnego bitu
         while (TRUE) {
-            unsigned char bytes_mask = (0xFFFF << (master_block->first_free_block_number - 1));
+            unsigned char bytes_mask = (0xFFFF << ((master_block->first_free_block_number - 1) % 8));
             DEBUG("Maska bitowa dla bajtu: %x, bajt= %x\n", bytes_mask, (*bitmap_byte));
             DEBUG("Maska bitwa nalozona na bajt: %x, first free block number%d\n", ((*bitmap_byte) & bytes_mask), master_block->first_free_block_number);
             // jeśli istnieje wolny bit w bitmapie
@@ -394,10 +394,6 @@ long _find_free_blocks(int fsfd, initialized_structures * initialized_structures
                     master_block->first_free_block_number++;
                 }
                 break;
-            } else if (master_block->first_free_block_number >= saved_first_free_block_number
-                       && master_block->first_free_block_number <= saved_first_free_block_number + 8) {
-                // nastąpił powrót do tego samego bloku
-                return NO_FREE_BLOCKS;
             } else if (master_block->first_free_block_number >= master_block->number_of_blocks) {
                 // dotarcie do końca wszystkich bloków (pierwszy blok to plik .lock)
                 master_block->first_free_block_number = master_block->data_start_block + 1;
