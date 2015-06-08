@@ -1375,36 +1375,51 @@ int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
     if(file_pointer == NULL) {
         return FD_NOT_FOUND;
     }
-
+    _lock_lock_file(initialized_structures_pointer->master_block_pointer, fsfd);
+    unsigned long file_size = _load_inode_from_file_structure(initialized_structures_pointer, file_pointer)->size;
+    _unlock_lock_file(initialized_structures_pointer->master_block_pointer, fsfd);
 
     unsigned long position = file_pointer->position;
-
     unsigned long current_block_number = _load_inode_from_file_structure(initialized_structures_pointer, file_pointer)->first_data_block;
     unsigned long current_position = 0;
     block t;
     unsigned long block_data_size =  masterblock->block_size - sizeof(t.next_data_block); //realny rozmiar bloku
     //przesuwamu sie przez dane które nasz position ignoruje
-    while (current_position + block_data_size <= position && current_block_number != 0) {
+    while (current_position + block_data_size <= position && current_block_number != 0 && current_position + block_data_size <= file_size) {
         current_block_number = _find_next_block(fsfd, current_block_number,  masterblock->data_start_block, masterblock->block_size);
         current_position += block_data_size;
     }
     unsigned long data_read = 0;
     block * current_block;
-    while (current_block_number != 0 && data_read < len) { //dopoki mozna czytac
+    unsigned first_block = 1;
+    while (current_block_number != 0 && data_read < len && current_position < file_size) { //dopoki mozna czytac
         current_block = _read_block(fsfd, current_block_number, masterblock->data_start_block, masterblock->block_size);
-        unsigned position_in_read_block = 0;
-        if (current_position < position) {
-            position_in_read_block = position - current_position;
-            current_position = position;
-        } else {
-            position_in_read_block = 0;
-        }
-        if (data_read + (block_data_size - position_in_read_block) <= len ) {
-            memcpy(buf + data_read, current_block->data + position_in_read_block, block_data_size - position_in_read_block);
-            data_read += block_data_size;
-        } else {
-            memcpy(buf + data_read, current_block->data + position_in_read_block, len - data_read);
-            data_read = len;
+        if (first_block) { //pierwszy czytany blok
+            unsigned long position_in_read_block = (position == current_position ? 0 : position - current_position);
+            current_position += position_in_read_block;
+            unsigned long portion_to_read = block_data_size - position_in_read_block; //ile chcemy wczytac
+            if (portion_to_read > len) { //jak wiecej niz powinnismy
+                portion_to_read = len;
+            }
+            if (current_position + portion_to_read > file_size) { //jak wyskakuje poza to obicnamy
+                portion_to_read = file_size - current_position;
+            }
+
+            memcpy(buf + data_read, current_block->data + position_in_read_block, portion_to_read);
+            data_read += portion_to_read;
+            current_position += portion_to_read;
+            first_block = 0;
+        } else { //tutaj czytamy od poczatku bloku
+            unsigned long portion_to_read = block_data_size;
+            if(data_read + portion_to_read > file_size) {
+                portion_to_read = file_size - data_read;
+            }
+            if(data_read + portion_to_read > len) {
+                portion_to_read = len - data_read;
+            }
+            memcpy(buf + data_read, current_block->data, portion_to_read);
+            data_read += portion_to_read;
+            current_position += portion_to_read;
         }
         current_block_number = current_block->next_data_block;
         free(current_block->data);
