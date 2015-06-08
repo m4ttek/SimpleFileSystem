@@ -779,7 +779,7 @@ int _check_duplicate_file_names_in_block(block* data_block, int block_size, void
     file_signature* signature = (file_signature*) data_block->data;
     printf("in check_duplicat file names. data_block->data = %X, liczba sygnatur na plik:%d\n", data_block->data, block_size / sizeof(file_signature));
     int i;
-    for(i = 0; i <= block_size / sizeof(file_signature); i++) {
+    for(i = 0; i < block_size / sizeof(file_signature); i++) {
         printf("wchodze");
         printf("signature node: %d, signature name %s\n", signature->inode_no, signature->name);
         if(signature->inode_no == 0) {
@@ -979,7 +979,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
         //free block in bitmap
         unsigned long bitmap_block_no = current_block_no / (8 * structures->master_block_pointer->block_size);
         printf("\n\n                      Numer bitmapy do zwolnienia %d\n\n", bitmap_block_no);
-        char bit_offset = current_block_no % (8 * structures->master_block_pointer->block_size);
+        char bit_offset = current_block_no % 8;
         structures->block_bitmap_pointer[bitmap_block_no] &= ~(1 << bit_offset);
         block* current_block = _read_block(fsfd, current_block_no, structures->master_block_pointer->data_start_block,
                                             structures->master_block_pointer->block_size);
