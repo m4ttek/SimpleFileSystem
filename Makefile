@@ -7,7 +7,22 @@ OBJS=simplefs.o main.o
 
 TEST_OBJS=tests.o simplefs.o
 
-all: app tests
+all: app tests concurrent_write_fork concurrent_write_init
+
+
+concurrent_write_fork: concurrent_write_fork.o simplefs.o
+	$(CC) concurrent_write_fork.o simplefs.o $(LFLAGS) -o cwfork
+concurrent_write_init: concurrent_write_init.o simplefs.o
+	$(CC) concurrent_write_init.o simplefs.o $(LFLAGS) -o cwinit
+
+
+concurrent_write_fork.o: concurrent_write_fork.c
+	$(CC) $(CFLAGS) -c concurrent_write_fork.c -o concurrent_write_fork.o
+
+concurrent_write_init.o: concurrent_write_init.c
+	$(CC) $(CFLAGS) -c concurrent_write_init.c -o concurrent_write_init.o
+
+
 
 app: $(OBJS)
 	$(CC) $(OBJS) $(LFLAGS) -o app
@@ -25,5 +40,5 @@ tests.o: tests.c
 	$(CC) $(CFLAGS) -c tests.c -o tests.o
 
 clean:
-	rm *.o tests app testfs2 testfs3
+	rm *.o tests app
 
