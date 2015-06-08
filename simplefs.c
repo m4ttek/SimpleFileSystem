@@ -983,10 +983,10 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
         structures->block_bitmap_pointer[bitmap_block_no] &= ~(1 << bit_offset);
         block* current_block = _read_block(fsfd, current_block_no, structures->master_block_pointer->data_start_block,
                                             structures->master_block_pointer->block_size);
-        if(current_block_no < structures->master_block_pointer->first_free_block_number) {
+        /*if(current_block_no < structures->master_block_pointer->first_free_block_number) {
             //update first free block no
             structures->master_block_pointer->first_free_block_number = current_block_no;
-        }
+        }*/
         unsigned long old_block_no = current_block_no;
         current_block_no = current_block->next_data_block;
 
