@@ -134,8 +134,10 @@ void test_write() {
 
     int fd = -1;
     CU_ASSERT(OK == simplefs_creat("/testfile", fsfd));
-    // TODO - nie działa open!!
     CU_ASSERT(0 <= (fd = simplefs_open("/testfile", WRITE_MODE, fsfd)));
+    if (fd < 0) {
+        return;
+    }
     char * buf = "testing file save";
     printf("\n\nPierwszy zapis do pliku\n\n");
     CU_ASSERT(OK == simplefs_write(fd, buf, 17, fsfd));
@@ -194,8 +196,11 @@ void test_read() {
     CU_ASSERT(fdfs > 0);
     CU_ASSERT(OK == simplefs_creat("/a.txt", fdfs));
     int fd = simplefs_open("/a.txt", READ_AND_WRITE, fdfs);
-    printf("FD %d", fd);
+    printf("\nFD %d\n", fd);
     CU_ASSERT(0 <= fd);
+    if (fd < 0) {
+        return;
+    }
     CU_ASSERT(OK == simplefs_write(fd, "adam to glupi programista", 15, fdfs));
     char result[20];
     simplefs_lseek(fd, SEEK_SET,0,fdfs);

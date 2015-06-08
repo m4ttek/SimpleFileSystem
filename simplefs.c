@@ -149,6 +149,7 @@ initialized_structures * _initialize_structures(int fd, int init_bitmaps) {
     initialized_structures_pointer->inode_table = inodes_table;
     initialized_structures_pointer->bitmap_delta = bitmap_delta;
     initialized_structures_pointer->inode_delta = inode_delta;
+    printf("Initalized structures!\n");
     return initialized_structures_pointer;
 }
 
@@ -226,23 +227,25 @@ inode* _get_root_inode(int fd, master_block* masterblock) {
  * @return znaleziony inode
  */
 inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* masterblock, unsigned long* inode_no) {
-    printf("_get_inode_in_dir %c", parent_inode->type);
+    printf("_get_inode_in_dir %c\n", parent_inode->type);
 
     if(parent_inode->type != INODE_DIR) {
         return NULL;
     }
     block* dir_block = _read_block(fd, parent_inode->first_data_block, masterblock->data_start_block, masterblock->block_size);
+    printf("Next data block: %d\n", dir_block->next_data_block);
     long i;
     while(1) {
-        printf("finding dir");
-        for(i = 0; i <= masterblock->block_size - sizeof(file_signature); i += sizeof(file_signature)) {
+        printf("finding dir: next data block: %d\n", dir_block->next_data_block);
+        for(i = 0; i <= masterblock->block_size - sizeof(file_signature) - sizeof(long); i += sizeof(file_signature)) {
+            printf("indeks %d\n", i);
             file_signature* signature = (file_signature*) (dir_block->data + i * sizeof(char));
             if(strcmp(name, signature->name) == 0 && signature->inode_no != 0) {
                 //calculate number of inode table block, where we'll find the right node
                 long block_to_read = signature->inode_no * sizeof(inode) / masterblock->block_size;
                 //zapameitujemy numer inode w tablicy inodow
                 *inode_no = signature->inode_no;
-                printf("%lu", signature->inode_no);
+                printf("Zapamiętanie w tablicy inodów: %lu\n", signature->inode_no);
                 block* inode_block = _read_block(fd, block_to_read, masterblock->first_inode_table_block, masterblock->block_size);
                 inode* result_inode = malloc(sizeof(inode));
                 memcpy(result_inode, inode_block->data + ((signature->inode_no * sizeof(inode)) % masterblock->block_size), sizeof(inode));
@@ -251,7 +254,8 @@ inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* 
                 return result_inode;
             }
         }
-        if(dir_block->next_data_block == NULL) {
+        if(dir_block->next_data_block == 0) {
+            printf("Nie znaleziony inode!\n");
             free(dir_block);
             return NULL;
         }
@@ -277,6 +281,7 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
     }
     unsigned path_index = 1;
     char* path_part = malloc(strlen(path) * sizeof(char));
+    printf("Path_part %c\n", path_part);
     inode* current_inode = _get_root_inode(fd, masterblock);
     while(1) {
         unsigned i = 0;
@@ -287,6 +292,7 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
         inode* new_inode = _get_inode_in_dir(fd, current_inode, path_part, masterblock, inode_no); //inode_no sie nie zmieni jak sie okaze ze path_part nie jest juz katalogiem
         free(current_inode);
         if(new_inode == NULL || new_inode->type == INODE_EMPTY) {
+            printf("Nie znaleziony inode!\n");
             free(path_part);
             return NULL;
         }
@@ -340,6 +346,9 @@ long _find_free_blocks(int fsfd, initialized_structures * initialized_structures
                       unsigned long * free_blocks) {
     printf("In _find_free_blocks. free blocks = %d\n", number_of_free_blocks);
     master_block * master_block = initialized_structures_pointer->master_block_pointer;
+    if (master_block->number_of_free_blocks == 0) {
+        return NO_FREE_BLOCKS;
+    }
     unsigned long first_free_block_number = master_block->first_free_block_number;
     char * block_bitmap_pointer = initialized_structures_pointer->block_bitmap_pointer;
     printf("block bitmap pointer = %X\n", block_bitmap_pointer);
@@ -866,7 +875,12 @@ int simplefs_open(char *name, int mode, int fsfd) { //Michal
     master_block* masterblock = _get_master_block(fsfd);
     unsigned i = 0;
     unsigned long tmp;
+    printf("\nSimplefs open - rozpoczęcie poszukiwania inoda.\n");
     inode* file_inode = _get_inode_by_path(name, masterblock, fsfd, &tmp);
+    if (file_inode == NULL) {
+        return FILE_DOESNT_EXIST;
+    }
+    printf("\n\nSimplefs open, pobrany inode: typ = %c size = %d\n", file_inode->type, file_inode->size);
     if(file_inode == NULL) {
         free(masterblock);
         return FILE_DOESNT_EXIST;
