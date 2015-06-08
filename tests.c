@@ -247,7 +247,30 @@ void test_lseek_read() {
     // przetestowanie przesunięcia poza koniec pliku
     simplefs_lseek(testfile_fd, SEEK_END, 0, fsfd);
     CU_ASSERT(0 == simplefs_read(testfile_fd, buf, 20, fsfd));
-    
+
+}
+
+void test_lseek_write() {
+    char buf[4096];
+    char * buf_test = "test";
+    // sprawdzenie czy przy wricie uaktalniana jest pozycja pliku
+    simplefs_lseek(testfile_fd, SEEK_SET, 0, fsfd);
+    CU_ASSERT(OK == simplefs_write(testfile_fd, buf_test, 4, fsfd));
+    simplefs_read(testfile_fd, buf, 13, fsfd);
+    buf[13] = 0;
+    CU_ASSERT(0 == strcmp(buf, "ing file save"));
+
+    // próba zapisu na końcu pliku nie powinna przesunąć pozycji pliku
+    simplefs_lseek(testfile_fd, SEEK_END, 0, fsfd);
+    CU_ASSERT(NO_FREE_BLOCKS == simplefs_write(testfile_fd, buf, 4096, fsfd));
+    simplefs_lseek(testfile_fd, SEEK_END, -4, fsfd);
+    simplefs_read(testfile_fd, buf, -4, fsfd);
+    int i = 0;
+    for (i; i < 4; i++) {
+        CU_ASSERT(1 == buf[i]);
+    }
+
+    // próba stworzenia pliku
 }
 
 
@@ -378,7 +401,8 @@ int main()
 
     /* add the tests to the suite 2 */
     if ((NULL == CU_add_test(pSuite, "test of simplefs write", test_write)) ||
-        (NULL == CU_add_test(pSuite, "test of simplefs write", test_lseek_read)))
+        (NULL == CU_add_test(pSuite, "test of simplefs write", test_lseek_read)) ||
+            (NULL == CU_add_test(pSuite, "test of simplefs write", test_lseek_write)))
     {
         CU_cleanup_registry();
         return CU_get_error();
