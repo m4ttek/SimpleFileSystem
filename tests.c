@@ -17,7 +17,7 @@ int fsfd = -1;
 int init_suite1(void)
 {
     unlink("testfs");
-    simplefs_init("testfs", 4096, 16);
+    return simplefs_init("testfs", 4096, 16);
 }
 
 /* The suite cleanup function.
@@ -26,6 +26,7 @@ int init_suite1(void)
  */
 int clean_suite1(void)
 {
+    return 0;
 }
 
 /* Simple test of fprintf().
@@ -194,13 +195,14 @@ void test_write() {
 //tworzy system plikow do testu reada
 int init_suite3(void)
 {
-    simplefs_init("testfs3", 4096, 8);
+    unlink("testfs3");
+    return simplefs_init("testfs3", 4096, 8);
 }
 
 //usuwa system plikow po tescie reada
 int clean_suite3(void)
 {
-   remove("testfs3");
+    return 0;
 }
 
 /*
