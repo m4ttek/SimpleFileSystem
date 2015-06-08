@@ -21,7 +21,7 @@ pthread_mutex_t open_files_write_mutex = PTHREAD_MUTEX_INITIALIZER;
  * ---------------------------------------------------------------------------------------------------------------------
  */
 
-#define DEBUG printf
+#define DEBUG //printf
 
 typedef struct write_params_t {
     int fsfd;               // deskryptor systemu plików
