@@ -382,8 +382,8 @@ long _find_free_blocks(int fsfd, initialized_structures * initialized_structures
         // wyszkanie następnego wolnego bloku, a w nim wolnego bitu
         while (TRUE) {
             unsigned char bytes_mask = (0xFFFF << (master_block->first_free_block_number - 1));
-            printf("Maska bitowa dla bajtu: %x\n", bytes_mask);
-            printf("Maska bitwa nalozona na bajt: %x\n", ((*bitmap_byte) & bytes_mask));
+            printf("Maska bitowa dla bajtu: %x, bajt= %x\n", bytes_mask, (*bitmap_byte));
+            printf("Maska bitwa nalozona na bajt: %x, first free block number%d\n", ((*bitmap_byte) & bytes_mask), master_block->first_free_block_number);
             // jeśli istnieje wolny bit w bitmapie
             if ((((*bitmap_byte) & bytes_mask) != bytes_mask) && master_block->first_free_block_number < master_block->number_of_blocks) {
                 char bitmap_byte_to_parse = (*bitmap_byte);
@@ -507,6 +507,14 @@ void _save_buffer_to_file(initialized_structures * initialized_structures_pointe
 
     unsigned int additional_block_offset = real_file_offset % real_block_size;
     unsigned int data_offset = 0;
+
+    // jeżeli istnieje poprzedni blok (istnieje możliwa dziura), to trzeba w nim zapisać info o nowym bloku
+    if (block_to_start > 0) {
+        unsigned long previous_block_to_update = blocks_table[block_to_start - 1];
+        lseek(params->fsfd, _get_block_offset(master_block_pointer, previous_block_to_update) + real_block_size, SEEK_SET);
+        write(params->fsfd, &blocks_table[block_to_start], sizeof(unsigned long));
+    }
+
     for (block_to_start; block_to_start < number_of_all_blocks_be_written; block_to_start++) {
         unsigned long block_number = blocks_table[block_to_start];
 
@@ -572,6 +580,11 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     unsigned int real_file_offset = 0;
     if (params.file_offset < 0) {
         real_file_offset = file_size;
+        unsigned long diff = real_block_size - file_size % real_block_size;
+        // specjalny przypadek - dodatkowo przy appendzie sprawdzamy czy blok danych do zapisu się zmieści, jeśli nie to robimy tam 'dziurę'
+        if (diff < params.data_length) {
+            real_file_offset += diff;
+        }
     } else {
         real_file_offset = file_structure->position;
     }
@@ -965,6 +978,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
 
         //free block in bitmap
         unsigned long bitmap_block_no = current_block_no / (8 * structures->master_block_pointer->block_size);
+        printf("\n\n                      Numer bitmapy do zwolnienia %d\n\n", bitmap_block_no);
         char bit_offset = current_block_no % (8 * structures->master_block_pointer->block_size);
         structures->block_bitmap_pointer[bitmap_block_no] &= ~(1 << bit_offset);
         block* current_block = _read_block(fsfd, current_block_no, structures->master_block_pointer->data_start_block,

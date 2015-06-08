@@ -126,8 +126,8 @@ void test_unlink() {
  */
 void test_write() {
     printf ("\n*********** TEST WRITE ***********\n");
-    simplefs_init("testfs2", 4096, 8);
-    unsigned long data_block_start = 1 + ceil((double) 8 / (4096 * 8)) + ceil((double) 8 / floor((double) 4096 / sizeof(inode)));
+    simplefs_init("testfs2", 4096, 9);
+    unsigned long data_block_start = 1 + ceil((double) 9 / (4096 * 8)) + ceil((double) 9 / floor((double) 4096 / sizeof(inode)));
     printf("\n\nData block %d , byte start = %d\n\n", data_block_start, (1 + data_block_start) * 4096 );
     CU_ASSERT(-1 != (fsfd = simplefs_openfs("testfs2")));
    master_block* master_block = _get_master_block(fsfd);
@@ -262,7 +262,7 @@ int main()
 
    /* add the tests to the suite */
    /* NOTE - ORDER IS IMPORTANT - MUST TEST fread() AFTER fprintf() */
-   if ((NULL == CU_add_test(pSuite, "test of fprintf()", testFPRINTF)) ||
+   /*if ((NULL == CU_add_test(pSuite, "test of fprintf()", testFPRINTF)) ||
        (NULL == CU_add_test(pSuite, "test of fread()", testFREAD)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs_init", test_initfs)) ||
        (NULL == CU_add_test(pSuite, "test of simplefs openfs", test_openfs)) ||
@@ -274,7 +274,7 @@ int main()
    {
       CU_cleanup_registry();
       return CU_get_error();
-   }
+   }*/
 
     /* add a suite to the registry */
     pSuite = CU_add_suite("Suite_2", init_suite1, clean_suite1);
@@ -291,7 +291,7 @@ int main()
     }
 
     /* add the tests to the suite 3 */
-    if ((NULL == CU_add_test(pSuite, "test of simplefs read", test_read)))
+    /*if ((NULL == CU_add_test(pSuite, "test of simplefs read", test_read)))
     {
         CU_cleanup_registry();
         return CU_get_error();
