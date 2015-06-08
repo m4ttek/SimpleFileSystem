@@ -1029,22 +1029,22 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
             inode* dir_inode = _get_inode_by_path(dir_path, structures->master_block_pointer, fsfd, &dir_inode_no);
             if(saved_position != dir_inode->size) {
                 //not the last signature to remove, need to replace
-                simplefs_lseek(dir_fd, SEEK_SET, dir_inode->size - sizeof(file_signature), fsfd);
+                simplefs_lseek_unsafe(dir_fd, structures, SEEK_SET, dir_inode->size - sizeof(file_signature), fsfd);
                 file_signature last_signature;
                 simplefs_read(dir_fd, &last_signature, sizeof(file_signature), fsfd);
 
                 //clear the last signature
-                simplefs_lseek(dir_fd, SEEK_CUR, -sizeof(unsigned long), fsfd);
+                simplefs_lseek_unsafe(dir_fd, structures, SEEK_CUR, -sizeof(unsigned long), fsfd);
                 unsigned long zero = 0;
                 simplefs_write(dir_fd, &zero, sizeof(unsigned long), fsfd);
 
                 //write in place of the old inode
-                simplefs_lseek(dir_fd, SEEK_SET, saved_position - sizeof(file_signature), fsfd);
+                simplefs_lseek_unsafe(dir_fd, structures, SEEK_SET, saved_position - sizeof(file_signature), fsfd);
                 simplefs_write(dir_fd, &last_signature, sizeof(file_signature), fsfd);
             } else {
                 //just last signature to remove
                 //clear the last signature
-                simplefs_lseek(dir_fd, SEEK_CUR, -sizeof(unsigned long), fsfd);
+                simplefs_lseek_unsafe(dir_fd, structures, SEEK_CUR, -sizeof(unsigned long), fsfd);
                 unsigned long zero = 0;
                 simplefs_write(dir_fd, &zero, sizeof(unsigned long), fsfd);
             }
@@ -1071,7 +1071,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
                         write(fsfd, &zero, sizeof(unsigned long));
                     }
                 }
-                simplefs_lseek(dir_fd, SEEK_SET, 0, fsfd);
+                simplefs_lseek_unsafe(dir_fd, structures, SEEK_SET, 0, fsfd);
                 char* dir_block = malloc(structures->master_block_pointer->block_size - sizeof(unsigned long));
                 simplefs_read(dir_fd, &dir_block, sizeof(block), fsfd);
             }
@@ -1099,7 +1099,7 @@ int simplefs_unlink(char *name, int fsfd) { //Michal
         }
         //kiedy w bloku nie mieści się więcej sygnatur, przeskocz o różnicę
         if((i + 1) % signatures_in_block == 0) {
-            simplefs_lseek(dir_fd, SEEK_CUR, dir_block_padding, fsfd);
+            simplefs_lseek_unsafe(dir_fd, structures, SEEK_CUR, dir_block_padding, fsfd);
         }
     }
     /*unsigned long dir_inode_no;
@@ -1375,15 +1375,9 @@ int simplefs_read(int fd, char *buf, int len, int fsfd) { //Adam
     if(file_pointer == NULL) {
         return FD_NOT_FOUND;
     }
-    _lock_lock_file(initialized_structures_pointer->master_block_pointer, fsfd);
-    unsigned long size = _load_inode_from_file_structure(initialized_structures_pointer, file_pointer)->size;
-    _unlock_lock_file(initialized_structures_pointer->master_block_pointer, fsfd);
-    unsigned long position = file_pointer->position;
-    if(position >= size) {
-        _uninitilize_structures(initialized_structures_pointer);
-        return 0;
-    }
 
+
+    unsigned long position = file_pointer->position;
 
     unsigned long current_block_number = _load_inode_from_file_structure(initialized_structures_pointer, file_pointer)->first_data_block;
     unsigned long current_position = 0;
@@ -1451,34 +1445,49 @@ int simplefs_write(int fd, char *buf, int len, int fsfd) { //Mateusz
     return result;
 }
 
-int simplefs_lseek(int fd, int whence, int offset, int fsfd) { //Mateusz
-    initialized_structures * initialized_structures_pointer = _initialize_structures(fsfd, 1);
-    if (initialized_structures_pointer == NULL) {
-        DEBUG("Blad");
-        return -1;
-    }
+/**
+ * Funkcja zakłada poprawną inicjalizację struktur.
+ */
+int simplefs_lseek_unsafe(int fd, initialized_structures * initialized_structures_pointer, int whence, int offset, int fsfd) {
+    _lock_lock_file(initialized_structures_pointer->master_block_pointer, fsfd);
+
     file * file_pointer =_get_file_by_fd(fd);
     if (file_pointer == NULL) {
         return FD_NOT_FOUND;
     }
     int effective_offset = 0;
+    unsigned long file_size = _load_inode_from_file_structure(initialized_structures_pointer, file_pointer)->size;
     switch(whence) {
         case SEEK_SET:
             effective_offset = offset;
             break;
         case SEEK_CUR:
             effective_offset = file_pointer->position + offset;
-            if (effective_offset < 0) {
-                effective_offset = 0;
-            }
             break;
         case SEEK_END:
-            effective_offset = _load_inode_from_file_structure(initialized_structures_pointer, file_pointer)->size + offset;
+            effective_offset = file_size + offset;
+
             break;
         default:
             return - 1;
     }
+    if (effective_offset < 0) {
+        effective_offset = 0;
+    } else if (effective_offset > file_size) {
+        effective_offset = file_size;
+    }
     file_pointer->position = effective_offset;
+
+    _unlock_lock_file(initialized_structures_pointer->master_block_pointer, fsfd);
+}
+
+int simplefs_lseek(int fd, int whence, int offset, int fsfd) { //Mateusz
+    initialized_structures * initialized_structures_pointer = _initialize_structures(fsfd, 1);
+    if (initialized_structures_pointer == NULL) {
+        DEBUG("Blad");
+        return -1;
+    }
+    simplefs_lseek_unsafe(fd, initialized_structures_pointer, whence, offset, fsfd);
     _uninitilize_structures(initialized_structures_pointer);
     return 0;
 }

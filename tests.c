@@ -31,7 +31,9 @@ int clean_suite1(void)
 
 int init_suite2(void) {
     remove("testfs2");
+    remove("testfs22");
     simplefs_init("testfs2", 4096, 5);
+    simplefs_init("testfs22", 4096, 5);
     return 0;
 }
 
