@@ -10,6 +10,8 @@
 char msg[LEN];
 
 int main() {
+    unlink("concurent_write_fs");
+    simplefs_init("concurrent_write_fs", 4096, 1024);
     if(fork() == 0) {
         int fsfd = simplefs_openfs("concurrent_write_fs");
         simplefs_creat("/a.txt", fsfd);
