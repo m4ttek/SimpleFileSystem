@@ -347,7 +347,7 @@ int _unblock_first_free_block(int fsfd, struct flock * fl) {
  */
 long _find_free_blocks(int fsfd, initialized_structures * initialized_structures_pointer, unsigned long number_of_free_blocks,
                       unsigned long * free_blocks) {
-    DEBUG("In _find_free_blocks. free blocks = %d\n", number_of_free_blocks);
+    printf("In _find_free_blocks. free blocks = %d\n", number_of_free_blocks);
     master_block * master_block = initialized_structures_pointer->master_block_pointer;
     if (master_block->number_of_free_blocks <= number_of_free_blocks) {
         return NO_FREE_BLOCKS;
@@ -365,8 +365,8 @@ long _find_free_blocks(int fsfd, initialized_structures * initialized_structures
         // zaznaczenie bloku jako zajętego
         DEBUG("bitmap pointer %d\n", block_bitmap_pointer);
         char * bitmap_byte = block_bitmap_pointer + ((master_block->first_free_block_number / 8) * sizeof(char));
-        unsigned int bit_in_byte = master_block->first_free_block_number % (sizeof(char) * 8);
-        DEBUG("bitmap byte evaluates to %d bit in byte %d\n", bitmap_byte, bit_in_byte);
+        unsigned int bit_in_byte = master_block->first_free_block_number % 8;
+        printf("bitmap byte evaluates to %X bit in byte %d\n", *bitmap_byte, bit_in_byte);
         (*bitmap_byte) |= (1 << bit_in_byte);
 
         DEBUG("Po zapisie\n");
@@ -376,17 +376,23 @@ long _find_free_blocks(int fsfd, initialized_structures * initialized_structures
         DEBUG("Zmniejszenie liczby wolnych blokow\n");
         // zmniejszenie liczby wolnych bloków
         master_block->number_of_free_blocks--;
+        printf("master_block->number_of_free_blocks = %d\n", master_block->number_of_free_blocks);
 
-        DEBUG("Nastepny blok pretendednt\n");
         // następny blok jest pretendentem na wolny blok
         master_block->first_free_block_number++;
+        printf("Nastepny blok pretendednt %d, liczba wszystkich = %d\n", master_block->first_free_block_number, master_block->number_of_blocks);
 
         DEBUG("przed whilem\n");
         // wyszkanie następnego wolnego bloku, a w nim wolnego bitu
         while (TRUE) {
-            unsigned char bytes_mask = (0xFFFF << ((master_block->first_free_block_number - 1) % 8));
-            DEBUG("Maska bitowa dla bajtu: %x, bajt= %x\n", bytes_mask, (*bitmap_byte));
-            DEBUG("Maska bitwa nalozona na bajt: %x, first free block number%d\n", ((*bitmap_byte) & bytes_mask), master_block->first_free_block_number);
+            unsigned char bytes_mask = (0xFF << ((master_block->first_free_block_number % 8) - 1));
+            printf("Maska bitowa dla bajtu: %x, bajt= %x\n", bytes_mask, (*bitmap_byte));
+            printf("Maska bitwa nalozona na bajt: %x, first free block number%d\n", ((*bitmap_byte) & bytes_mask), master_block->first_free_block_number);
+            if (bytes_mask == 0xFF) {
+                // przesuwamy się na następne miejsce w bitmapie (niewyrównane bloki zostaną pominięte)
+                bitmap_byte = block_bitmap_pointer + ((master_block->first_free_block_number / 8) * sizeof(char));
+            }
+
             // jeśli istnieje wolny bit w bitmapie
             if ((((*bitmap_byte) & bytes_mask) != bytes_mask) && master_block->first_free_block_number < master_block->number_of_blocks) {
                 char bitmap_byte_to_parse = (*bitmap_byte);
@@ -399,12 +405,10 @@ long _find_free_blocks(int fsfd, initialized_structures * initialized_structures
                 master_block->first_free_block_number = master_block->data_start_block + 1;
                 bitmap_byte = block_bitmap_pointer + 1;
             } else {
-                // przesuwamy się na następne miejsce w bitmapie (niewyrównane bloki zostaną pominięte)
-                bitmap_byte += sizeof(char);
-                master_block->first_free_block_number += 8;
+                master_block->first_free_block_number++;
             }
         }
-        DEBUG("zakonczenie wyszukiwania wolnych blokow!\n");
+        printf("zakonczenie wyszukiwania wolnych blokow!\n");
     }
     DEBUG("wyjscie z find free blocks!\n");
     return (long) saved_first_free_block_number;
@@ -572,6 +576,7 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     // sprawdzenie poprawności dostępu do pliku
     if (file_structure->mode == READ_MODE) {
         _unblock_first_free_block(params.fsfd, &flock_structure);
+        printf("Wrong mode\n");
         return WRONG_MODE;
     }
 
@@ -605,7 +610,7 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
     } else {
         blocks_table = (unsigned long *) malloc(sizeof(unsigned long) * number_of_blocks_to_be_taken_by_file);
     }
-    DEBUG("\n\n************\nLiczba wszystkich blokow zajmowanych przez plik: %d, liczba blokow do zajecia: %d\n\n", number_of_all_taken_blocks_by_file, number_of_blocks_to_be_taken_by_file);
+    printf("\n\n************\nLiczba wszystkich blokow zajmowanych przez plik: %d, liczba blokow do zajecia: %d\n\n", number_of_all_taken_blocks_by_file, number_of_blocks_to_be_taken_by_file);
     // czy trzeba wyszukać nowe bloki danych dla pliku
     unsigned int number_of_free_blocks = 0;
     if ((number_of_blocks_to_be_taken_by_file > number_of_all_taken_blocks_by_file)
@@ -621,7 +626,7 @@ int _write_unsafe(initialized_structures * initialized_structures_pointer, write
             free(blocks_table);
             return NO_FREE_BLOCKS;
         } else if (file_inode->first_data_block == 0) {
-            DEBUG("First operated block: %d\n", first_operated_block);
+            printf("First operated block: %d\n", first_operated_block);
             file_inode->first_data_block = first_operated_block;
         }
     }
@@ -1277,6 +1282,7 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
     strncpy(path, name, path_length);
     int file_name_length;
     if(full_path_length - path_length > FILE_NAME_LENGTH) {
+        printf("Name TOO LONG!");
         return NAME_TOO_LONG;
     } else {
         file_name_length = full_path_length - path_length;
@@ -1304,6 +1310,7 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
         parent_node = _get_inode_by_path(path, is->master_block_pointer, fsfd, &tmp);
         if(parent_node == NULL) {
             result = DIR_DOESNT_EXIST;
+            printf("Dir deousn exist\n");
             break;
         }
         DEBUG("%d", tmp);
@@ -1316,6 +1323,7 @@ int _create_file_or_dir(char *name, int fsfd, int is_dir) {
         unsigned long inode_no = _insert_new_inode(&new_file, is, fsfd);
         if(inode_no == 0) {
             result =  NO_FREE_INODES;
+            printf("no free inodes!\n");
             break;
         }
         DEBUG("Inserted new inofde: %lu\n", inode_no);

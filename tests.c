@@ -142,8 +142,10 @@ void test_2_creat_and_unlink() {
         sprintf(buf, "/%d", i);
         int result = simplefs_creat(buf, fsfd);
         CU_ASSERT(OK == result);
-        if(result != OK) {
-            printf("DUpa");
+        if(result == OK) {
+            printf("%d OK", i);
+        } else {
+            break;
         }
     }
     /*simplefs_creat(buf, fsfd);
