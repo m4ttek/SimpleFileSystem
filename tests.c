@@ -175,6 +175,7 @@ void test_write() {
     CU_ASSERT(OK == simplefs_creat("/testfile", fsfd));
     CU_ASSERT(0 <= (testfile_fd = simplefs_open("/testfile", WRITE_MODE, fsfd)));
     if (testfile_fd < 0) {
+        free(master_block);
         return;
     }
     char *buf = "testing file save";
@@ -187,6 +188,9 @@ void test_write() {
     // append do istniejącego asserta
     printf("\n\nDrugi zapis do pliku\n\n");
     CU_ASSERT(OK == simplefs_write(testfile_fd, buf, 17, fsfd));
+
+    free(block_pointer->data);
+    free(block_pointer);
     block_pointer = (block *) _read_block(fsfd, 2, data_block_start, 4096);
     CU_ASSERT('t' == block_pointer->data[0]);
     CU_ASSERT('t' == block_pointer->data[17]);
@@ -200,6 +204,10 @@ void test_write() {
 
     printf("\n\nZapis dużej dawki jedynek\n\n");
     CU_ASSERT(OK == simplefs_write(testfile_fd, second_bufs, 4096, fsfd));
+
+    free(block_pointer->data);
+    free(block_pointer);
+
     // sprawdzenie czy dane zapisane poprawnie:
     block_pointer = (block *) _read_block(fsfd, 2, data_block_start, 4096);
     block * second_block_pointer = (block *) _read_block(fsfd, 3, data_block_start, 4096);
@@ -227,6 +235,13 @@ void test_write() {
             break;
         }
     }
+    free(master_block);
+    free(block_pointer->data);
+    free(block_pointer);
+    free(second_block_pointer->data);
+    free(second_block_pointer);
+    free(third_block_pointer->data);
+    free(third_block_pointer);
 }
 
 void test_lseek_read() {
