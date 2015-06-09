@@ -138,7 +138,7 @@ void test_creat_and_unlink() {
 void test_2_creat_and_unlink() {
     int i;
         char buf[10];
-    for(i = 0; i < 1000; i++) {
+    for(i = 0; i < 126; i++) {
         sprintf(buf, "/%d", i);
         int result = simplefs_creat(buf, fsfd);
         CU_ASSERT(OK == result);
@@ -148,6 +148,9 @@ void test_2_creat_and_unlink() {
             break;
         }
     }
+    CU_ASSERT(NO_FREE_INODES == simplefs_creat("/126", fsfd));
+    CU_ASSERT(OK == simplefs_unlink("/125", fsfd));
+    CU_ASSERT(OK == simplefs_creat("/126", fsfd));
     /*simplefs_creat(buf, fsfd);
     simplefs_creat(buf, fsfd);
     simplefs_creat(buf, fsfd);

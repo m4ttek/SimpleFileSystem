@@ -248,9 +248,11 @@ inode* _get_inode_in_dir(int fd, inode* parent_inode, char* name, master_block* 
                 //zapameitujemy numer inode w tablicy inodow
                 *inode_no = signature->inode_no;
                 DEBUG("Zapamiętanie w tablicy inodów: %lu\n", signature->inode_no);
-                block* inode_block = _read_block(fd, block_to_read, masterblock->first_inode_table_block, masterblock->block_size);
+                char* inode_block = malloc(masterblock->block_size); // = (char*) _read_block(fd, block_to_read, masterblock->first_inode_table_block, masterblock->block_size);
+                lseek(fd, (masterblock->first_inode_table_block + block_to_read) * masterblock->block_size, SEEK_SET);
+                read(fd, inode_block, masterblock->block_size);
                 inode* result_inode = malloc(sizeof(inode));
-                memcpy(result_inode, inode_block->data + ((signature->inode_no * sizeof(inode)) % masterblock->block_size), sizeof(inode));
+                memcpy(result_inode, inode_block + ((signature->inode_no * sizeof(inode)) % masterblock->block_size), sizeof(inode));
                 free(dir_block);
                 free(inode_block);
                 return result_inode;
@@ -279,8 +281,7 @@ inode* _get_inode_by_path(char* path, master_block* masterblock, int fd, unsigne
         //root inode
         *inode_no = 0;
         DEBUG("In _get_inode_by_path - get root inode. Block size is %d\n", masterblock->block_size);
-        inode* aaa = _get_root_inode(fd, masterblock);
-        return aaa;//_get_root_inode(fd, masterblock);
+        return _get_root_inode(fd, masterblock);
     }
     unsigned path_index = 1;
     char* path_part = malloc(strlen(path) * sizeof(char));
@@ -1253,7 +1254,7 @@ void _mark_inode_as_empty(initialized_structures* structures, unsigned long inod
     //mark inode as empty
     structures->inode_table[inode_no].type = INODE_EMPTY;
     //update first free inode if applicable
-    if(inode_no < structures->master_block_pointer->first_free_inode) {
+    if(inode_no < structures->master_block_pointer->first_free_inode || structures->master_block_pointer->first_free_inode == 0) {
         structures->master_block_pointer->first_free_inode = inode_no;
     }
 }
